@@ -18,6 +18,12 @@ export type BusinessOwnership = {
   isPrimary: boolean;
 };
 
+export type PermissionScope = {
+  businessId: string | null;
+  storeId: string | null;
+  permissions: string[];
+};
+
 export type AppSession = {
   authUserId: string;
   profileId: string;
@@ -29,6 +35,7 @@ export type AppSession = {
   isEmployee: boolean;
   roles: RoleAssignment[];
   permissions: string[];
+  permissionScopes: PermissionScope[];
   ownerships: BusinessOwnership[];
   defaultRoute: string;
 };
@@ -113,7 +120,7 @@ export async function getAppSessionFromAccessToken(
   const permissionResult = roleIds.length
     ? await supabaseAdmin
         .from("role_permissions")
-        .select("permission_id")
+        .select("role_id, permission_id")
         .in("role_id", roleIds)
     : { data: [], error: null };
 
@@ -125,13 +132,32 @@ export async function getAppSessionFromAccessToken(
   const permissionsResult = permissionIds.length
     ? await supabaseAdmin
         .from("permissions")
-        .select("code")
+        .select("id, code")
         .in("id", permissionIds)
     : { data: [], error: null };
 
   if (permissionsResult.error) return null;
 
   const metadata = (profile.metadata ?? {}) as Record<string, unknown>;
+  const permissionCodesById = new Map(
+    (permissionsResult.data ?? []).map((permission) => [
+      permission.id,
+      permission.code,
+    ]),
+  );
+  const permissionCodesByRole = new Map<string, string[]>();
+  for (const mapping of permissionResult.data ?? []) {
+    const permissionCode = permissionCodesById.get(mapping.permission_id);
+    if (!permissionCode) continue;
+    const rolePermissions = permissionCodesByRole.get(mapping.role_id) ?? [];
+    rolePermissions.push(permissionCode);
+    permissionCodesByRole.set(mapping.role_id, rolePermissions);
+  }
+  const permissionScopes = roles.map((role) => ({
+    businessId: role.businessId,
+    storeId: role.storeId,
+    permissions: permissionCodesByRole.get(role.roleId) ?? [],
+  }));
   const ownerships = (ownershipsResult.data ?? []).map((ownership) => ({
     businessId: ownership.business_id,
     isPrimary: ownership.is_primary,
@@ -165,9 +191,8 @@ export async function getAppSessionFromAccessToken(
     displayName: profile.display_name || fullName || "Utilisateur AFRICRM",
     ...sessionBase,
     roles,
-    permissions: (permissionsResult.data ?? []).map(
-      (permission) => permission.code,
-    ),
+    permissions: [...new Set(permissionCodesById.values())],
+    permissionScopes,
     ownerships,
     defaultRoute: getDefaultRoute(sessionBase),
   };

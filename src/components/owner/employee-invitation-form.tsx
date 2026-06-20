@@ -15,10 +15,15 @@ export function EmployeeInvitationForm({
   businesses,
   stores,
   roles,
+  allowedRoleCodesByBusiness,
 }: Readonly<{
   businesses: Array<{ id: string; name: string }>;
   stores: Array<{ id: string; business_id: string; name: string }>;
   roles: Array<{ code: EmployeeInvitationInput["roleCode"]; name: string }>;
+  allowedRoleCodesByBusiness: Record<
+    string,
+    EmployeeInvitationInput["roleCode"][]
+  >;
 }>) {
   const router = useRouter();
   const {
@@ -46,12 +51,23 @@ export function EmployeeInvitationForm({
   const availableStores = stores.filter(
     (store) => store.business_id === selectedBusiness,
   );
+  const allowedRoleCodes = allowedRoleCodesByBusiness[selectedBusiness] ?? [];
+  const availableRoles = roles.filter((role) =>
+    allowedRoleCodes.includes(role.code),
+  );
+  const selectedRole = useWatch({ control, name: "roleCode" });
 
   useEffect(() => {
     if (!availableStores.some((store) => store.id === selectedStore)) {
       setValue("storeId", availableStores[0]?.id ?? "");
     }
   }, [availableStores, selectedStore, setValue]);
+
+  useEffect(() => {
+    if (!availableRoles.some((role) => role.code === selectedRole)) {
+      setValue("roleCode", availableRoles[0]?.code ?? "manager");
+    }
+  }, [availableRoles, selectedRole, setValue]);
 
   async function onSubmit(values: EmployeeInvitationInput) {
     const response = await fetch("/api/owner/employee-invitations", {
@@ -108,7 +124,7 @@ export function EmployeeInvitationForm({
           </Field>
           <Field label="Rôle" error={errors.roleCode?.message}>
             <select {...register("roleCode")} className="form-input">
-              {roles.map((role) => (
+              {availableRoles.map((role) => (
                 <option key={role.code} value={role.code}>
                   {role.name}
                 </option>
