@@ -217,6 +217,26 @@ export async function POST(request: Request) {
     return jsonError("Vous n’avez pas accès à cette caisse.", 403);
   }
 
+  const { data: activeCashSession, error: activeCashSessionError } =
+    await supabaseAdmin
+      .from("cash_sessions")
+      .select("id")
+      .eq("store_id", storeRow.id)
+      .eq("status", "open")
+      .maybeSingle();
+
+  if (activeCashSessionError) {
+    console.error(
+      "POS: vérification session de caisse impossible",
+      activeCashSessionError,
+    );
+    return jsonError("La session de caisse n'a pas pu être vérifiée.", 500);
+  }
+
+  if (!activeCashSession) {
+    return jsonError("Ouvrez une session de caisse avant d'encaisser.", 409);
+  }
+
   let customer: CustomerRow | null = null;
   if (input.customerId) {
     const { data: customerData, error: customerError } = await supabaseAdmin

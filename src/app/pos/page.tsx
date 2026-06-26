@@ -7,6 +7,7 @@ import {
   type PosRegisterProduct,
   type PosRegisterStore,
 } from "@/components/pos/pos-register";
+import type { PosCashSession } from "@/components/pos/cash-session-panel";
 import { getAppSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -100,6 +101,20 @@ type PaymentRow = {
   payment_methods: { name: string } | null;
 };
 
+type CashSessionRow = {
+  id: string;
+  business_id: string;
+  store_id: string;
+  status: string;
+  opened_at: string;
+  closed_at: string | null;
+  opening_balance: number | string;
+  expected_closing_balance: number | string | null;
+  closing_balance: number | string | null;
+  difference_amount: number | string | null;
+  notes: string | null;
+};
+
 function getAccessibleStoreIds(
   session: Awaited<ReturnType<typeof getAppSession>>,
 ) {
@@ -165,6 +180,7 @@ export default async function PosPage() {
     paymentsResult,
     customersResult,
     salesResult,
+    cashSessionsResult,
   ] =
     businessIds.length > 0
       ? await Promise.all([
@@ -215,8 +231,19 @@ export default async function PosPage() {
                 .order("created_at", { ascending: false })
                 .limit(100)
             : { data: [], error: null },
+          storeIds.length > 0
+            ? supabaseAdmin
+                .from("cash_sessions")
+                .select(
+                  "id, business_id, store_id, status, opened_at, closed_at, opening_balance, expected_closing_balance, closing_balance, difference_amount, notes",
+                )
+                .in("store_id", storeIds)
+                .eq("status", "open")
+                .order("opened_at", { ascending: false })
+            : { data: [], error: null },
         ])
       : [
+          { data: [], error: null },
           { data: [], error: null },
           { data: [], error: null },
           { data: [], error: null },
@@ -231,7 +258,8 @@ export default async function PosPage() {
     categoriesResult.error ||
     paymentsResult.error ||
     customersResult.error ||
-    salesResult.error
+    salesResult.error ||
+    cashSessionsResult.error
   ) {
     throw new Error(
       productsResult.error?.message ??
@@ -239,7 +267,8 @@ export default async function PosPage() {
         categoriesResult.error?.message ??
         paymentsResult.error?.message ??
         customersResult.error?.message ??
-        salesResult.error?.message,
+        salesResult.error?.message ??
+        cashSessionsResult.error?.message,
     );
   }
 
@@ -428,6 +457,34 @@ export default async function PosPage() {
     };
   });
 
+  const cashSessionsByStoreId = new Map<string, PosCashSession>();
+  for (const session of (cashSessionsResult.data ?? []) as CashSessionRow[]) {
+    if (cashSessionsByStoreId.has(session.store_id)) continue;
+
+    cashSessionsByStoreId.set(session.store_id, {
+      id: session.id,
+      businessId: session.business_id,
+      storeId: session.store_id,
+      status: session.status,
+      openedAt: session.opened_at,
+      closedAt: session.closed_at,
+      openingBalance: toNumber(session.opening_balance),
+      expectedClosingBalance:
+        session.expected_closing_balance === null
+          ? null
+          : toNumber(session.expected_closing_balance),
+      closingBalance:
+        session.closing_balance === null
+          ? null
+          : toNumber(session.closing_balance),
+      differenceAmount:
+        session.difference_amount === null
+          ? null
+          : toNumber(session.difference_amount),
+      notes: session.notes,
+    });
+  }
+
   return (
     <PosRegister
       stores={stores}
@@ -435,6 +492,7 @@ export default async function PosPage() {
       paymentMethods={paymentMethods}
       customers={customers}
       recentSales={recentSales}
+      cashSessions={[...cashSessionsByStoreId.values()]}
     />
   );
 }

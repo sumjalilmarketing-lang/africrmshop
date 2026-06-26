@@ -7,19 +7,28 @@ const mocks = vi.hoisted(() => {
     is: vi.fn(),
     single: vi.fn(),
   };
+  const cashSessionQuery = {
+    select: vi.fn(),
+    eq: vi.fn(),
+    maybeSingle: vi.fn(),
+  };
 
   storeQuery.select.mockReturnValue(storeQuery);
   storeQuery.eq.mockReturnValue(storeQuery);
   storeQuery.is.mockReturnValue(storeQuery);
+  cashSessionQuery.select.mockReturnValue(cashSessionQuery);
+  cashSessionQuery.eq.mockReturnValue(cashSessionQuery);
 
   return {
     getAppSession: vi.fn(),
     from: vi.fn((table: string) => {
       if (table === "stores") return storeQuery;
+      if (table === "cash_sessions") return cashSessionQuery;
       throw new Error(`Unexpected table: ${table}`);
     }),
     rpc: vi.fn(),
     storeQuery,
+    cashSessionQuery,
   };
 });
 
@@ -73,6 +82,12 @@ describe("POST /api/pos/sales", () => {
       },
       error: null,
     });
+    mocks.cashSessionQuery.maybeSingle.mockResolvedValue({
+      data: {
+        id: "70000000-0000-0000-0000-000000000001",
+      },
+      error: null,
+    });
     mocks.rpc.mockResolvedValue({
       data: [
         {
@@ -91,6 +106,21 @@ describe("POST /api/pos/sales", () => {
     const response = await POST(request(validInput));
 
     expect(response.status).toBe(403);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("refuse une vente si la caisse n'est pas ouverte", async () => {
+    mocks.cashSessionQuery.maybeSingle.mockResolvedValue({
+      data: null,
+      error: null,
+    });
+
+    const response = await POST(request(validInput));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Ouvrez une session de caisse avant d'encaisser.",
+    });
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 

@@ -28,6 +28,10 @@ import {
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
+import {
+  CashSessionPanel,
+  type PosCashSession,
+} from "@/components/pos/cash-session-panel";
 
 export type PosRegisterStore = {
   id: string;
@@ -365,12 +369,14 @@ export function PosRegister({
   paymentMethods,
   customers,
   recentSales,
+  cashSessions,
 }: Readonly<{
   stores: PosRegisterStore[];
   products: PosRegisterProduct[];
   paymentMethods: PosPaymentMethod[];
   customers: PosCustomer[];
   recentSales: PosRecentSale[];
+  cashSessions: PosCashSession[];
 }>) {
   const router = useRouter();
   const [selectedStoreId, setSelectedStoreId] = useState(stores[0]?.id ?? "");
@@ -396,6 +402,8 @@ export function PosRegister({
   const [salePaymentFilter, setSalePaymentFilter] = useState("all");
 
   const selectedStore = stores.find((store) => store.id === selectedStoreId);
+  const selectedCashSession =
+    cashSessions.find((session) => session.storeId === selectedStoreId) ?? null;
   const selectedBusinessId = selectedStore?.businessId;
   const businessCustomers = customers.filter(
     (customer) =>
@@ -676,6 +684,10 @@ export function PosRegister({
 
   async function checkout() {
     if (!selectedStoreId || cart.length === 0 || isSubmitting) return;
+    if (!selectedCashSession) {
+      setCheckoutError("Ouvrez une session de caisse avant d'encaisser.");
+      return;
+    }
 
     setIsSubmitting(true);
     setCheckoutError(null);
@@ -839,6 +851,15 @@ export function PosRegister({
             </section>
           ) : (
             <>
+              {selectedStore ? (
+                <CashSessionPanel
+                  cashSession={selectedCashSession}
+                  storeId={selectedStore.id}
+                  storeName={selectedStore.name}
+                  onChanged={() => router.refresh()}
+                />
+              ) : null}
+
               <section className="rounded-[2rem] border border-[#dbe6df] bg-white p-5 shadow-sm">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <label className="relative flex-1">
@@ -1274,6 +1295,7 @@ export function PosRegister({
             disabled={
               cart.length === 0 ||
               isSubmitting ||
+              !selectedCashSession ||
               (selectedPaymentMethod?.requiresReference &&
                 paymentReference.trim().length === 0)
             }
