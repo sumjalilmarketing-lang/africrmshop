@@ -1,11 +1,13 @@
 import { CalendarDays, LayoutDashboard, ShoppingCart } from "lucide-react";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getEmployeeSession } from "@/lib/auth";
+import { getAppSession } from "@/lib/auth";
 
 export default async function EmployeeDashboardPage() {
-  const employee = await getEmployeeSession();
+  const employee = await getAppSession();
   if (!employee) redirect("/connexion");
   if (employee.mustChangePassword) redirect("/changer-mot-de-passe");
+  if (!employee.isEmployee) redirect(employee.defaultRoute);
   const canUsePos = employee.permissions.includes("pos.access");
   const canUseBookings = employee.permissions.includes("bookings.access");
 
@@ -28,13 +30,16 @@ export default async function EmployeeDashboardPage() {
             </p>
           </article>
           {canUsePos && (
-            <article className="rounded-2xl border border-[#e1e7e3] bg-white p-5">
+            <Link
+              href="/pos"
+              className="rounded-2xl border border-[#e1e7e3] bg-white p-5 transition hover:-translate-y-0.5 hover:border-[#0b7a4b]/30 hover:shadow-lg hover:shadow-[#0b7a4b]/5"
+            >
               <ShoppingCart className="size-5 text-[#0b7a4b]" />
               <h2 className="mt-4 font-bold">Caisse POS</h2>
               <p className="text-muted mt-2 text-xs">
                 Accès autorisé selon votre rôle.
               </p>
-            </article>
+            </Link>
           )}
           {canUseBookings && (
             <article className="rounded-2xl border border-[#e1e7e3] bg-white p-5">

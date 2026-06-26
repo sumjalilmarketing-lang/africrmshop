@@ -2,10 +2,15 @@
 
 import {
   Building2,
+  Boxes,
+  ContactRound,
   LayoutDashboard,
   LogOut,
+  Package,
   Settings,
+  ShoppingCart,
   Store,
+  Truck,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -18,7 +23,12 @@ const navigation = [
   [LayoutDashboard, "Dashboard", "/owner/dashboard"],
   [Building2, "Entreprises", "/owner/businesses"],
   [Store, "Boutiques", "/owner/stores"],
+  [Package, "Produits", "/owner/products"],
+  [Boxes, "Inventaire", "/owner/inventory"],
+  [Truck, "Fournisseurs", "/owner/suppliers"],
+  [ContactRound, "Clients", "/owner/customers"],
   [Users, "Employés", "/owner/employees"],
+  [ShoppingCart, "Caisse POS", "/pos"],
   [Settings, "Paramètres", "/owner/settings"],
 ] as const;
 

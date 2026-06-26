@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  from: vi.fn(),
   getUser: vi.fn(),
   rpc: vi.fn(),
 }));
@@ -8,6 +9,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/supabaseAdmin", () => ({
   supabaseAdmin: {
     auth: { getUser: mocks.getUser },
+    from: mocks.from,
     rpc: mocks.rpc,
   },
 }));
@@ -28,6 +30,18 @@ function request(body: unknown) {
 describe("POST /api/auth/accept-employee-invitation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.from.mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      gt: vi.fn().mockReturnThis(),
+      order: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({
+        data: { token_hash: "stored-token-hash" },
+        error: null,
+      }),
+    });
     mocks.getUser.mockResolvedValue({
       data: {
         user: {
@@ -78,6 +92,23 @@ describe("POST /api/auth/accept-employee-invitation", () => {
       expect.objectContaining({
         p_auth_user_id: "60000000-0000-0000-0000-000000000001",
         p_email: "vendeur@example.com",
+      }),
+    );
+  });
+
+  it("retrouve l’invitation pending par e-mail si le lien Supabase a perdu le jeton", async () => {
+    mocks.rpc.mockResolvedValue({ data: [{}], error: null });
+
+    const response = await POST(request({ accessToken: "token" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.from).toHaveBeenCalledWith("employee_invitations");
+    expect(mocks.rpc).toHaveBeenCalledWith(
+      "africrm_accept_employee_invitation",
+      expect.objectContaining({
+        p_auth_user_id: "60000000-0000-0000-0000-000000000001",
+        p_email: "vendeur@example.com",
+        p_token_hash: "stored-token-hash",
       }),
     );
   });

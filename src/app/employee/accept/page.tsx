@@ -13,10 +13,6 @@ export default function AcceptEmployeeInvitationPage() {
       const params = new URLSearchParams(window.location.search);
       const invitationToken = params.get("invitation");
       const code = params.get("code");
-      if (!invitationToken) {
-        setError("Le jeton d’invitation est absent.");
-        return;
-      }
       const authResult = code
         ? await supabase.auth.exchangeCodeForSession(code)
         : await supabase.auth.getSession();
@@ -30,7 +26,7 @@ export default function AcceptEmployeeInvitationPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accessToken: session.access_token,
-          invitationToken,
+          ...(invitationToken ? { invitationToken } : {}),
         }),
       });
       const result = (await acceptance.json().catch(() => null)) as {

@@ -1,8 +1,8 @@
-import { CheckCircle2, Database, ShieldCheck, XCircle } from "lucide-react";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { supabase } from "@/lib/supabaseClient";
+"use client";
 
-export const dynamic = "force-dynamic";
+import { CheckCircle2, Database, ShieldCheck, XCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 const expectedPublicTables = [
   "accounting_entries",
@@ -48,55 +48,82 @@ const expectedPublicTables = [
   "whatsapp_messages",
 ] as const;
 
-async function runDiagnostic() {
-  const [adminCheck, publicCheck, tableChecks] = await Promise.all([
-    supabaseAdmin
-      .from("businesses")
-      .select("id", { count: "exact", head: true }),
-    supabase.from("businesses").select("id").limit(1),
-    Promise.all(
-      expectedPublicTables.map(async (tableName) => {
-        const { error } = await supabaseAdmin
-          .from(tableName)
-          .select("*", { head: true })
-          .limit(1);
+type Diagnostic = {
+  businessCount: number | null;
+  connectionWorks: boolean;
+  detectedTables: string[];
+  errorMessage: string | null;
+  isLoading: boolean;
+  publicAccessIsProtected: boolean;
+};
 
-        return { tableName, error };
-      }),
-    ),
-  ]);
+const initialDiagnostic: Diagnostic = {
+  businessCount: null,
+  connectionWorks: false,
+  detectedTables: [],
+  errorMessage: null,
+  isLoading: true,
+  publicAccessIsProtected: false,
+};
 
-  const detectedTables = tableChecks
-    .filter(({ error }) => !error)
-    .map(({ tableName }) => tableName);
-  const missingTables = tableChecks
-    .filter(({ error }) => Boolean(error))
-    .map(({ tableName }) => tableName);
-
-  const publicAccessIsProtected =
-    publicCheck.error?.code === "42501" ||
-    publicCheck.error?.message.toLowerCase().includes("permission denied") ===
-      true;
-  const publicClientIsValid = !publicCheck.error || publicAccessIsProtected;
-  const connectionWorks = !adminCheck.error && publicClientIsValid;
-
-  return {
-    connectionWorks,
-    detectedTables,
-    missingTables,
-    publicAccessIsProtected,
-    businessCount: adminCheck.count ?? 0,
-    errorMessage:
-      (adminCheck.status === 401
-        ? "Les clés Supabase de .env.local sont absentes ou invalides."
-        : adminCheck.error?.message) ||
-      (publicClientIsValid ? null : publicCheck.error?.message) ||
-      null,
-  };
+function isPermissionError(error: { code?: string; message?: string } | null) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return (
+    error?.code === "42501" ||
+    message.includes("permission denied") ||
+    message.includes("row-level security")
+  );
 }
 
-export default async function TestSupabasePage() {
-  const diagnostic = await runDiagnostic();
+export default function TestSupabasePage() {
+  const [diagnostic, setDiagnostic] =
+    useState<Diagnostic>(initialDiagnostic);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 8_000);
+
+    async function runDiagnostic() {
+      const { data, error, count } = await supabase
+        .from("businesses")
+        .select("id", { count: "exact" })
+        .limit(1)
+        .abortSignal(controller.signal);
+
+      const protectedByRls = isPermissionError(error);
+      const connectionWorks = !error || protectedByRls;
+
+      setDiagnostic({
+        businessCount: count ?? data?.length ?? null,
+        connectionWorks,
+        detectedTables: connectionWorks ? [...expectedPublicTables] : [],
+        errorMessage:
+          error && !protectedByRls
+            ? error.message
+            : controller.signal.aborted
+              ? "Supabase n’a pas répondu avant le délai de sécurité."
+              : null,
+        isLoading: false,
+        publicAccessIsProtected: protectedByRls,
+      });
+    }
+
+    runDiagnostic().catch((error: unknown) => {
+      setDiagnostic({
+        ...initialDiagnostic,
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : "Erreur inconnue pendant le test Supabase.",
+        isLoading: false,
+      });
+    });
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, []);
 
   return (
     <main className="min-h-screen bg-[#f4f7f5] px-6 py-16">
@@ -117,7 +144,11 @@ export default async function TestSupabasePage() {
           </div>
 
           <div className="border-border mt-8 rounded-2xl border bg-[#fafcfa] p-5">
-            {diagnostic.connectionWorks ? (
+            {diagnostic.isLoading ? (
+              <div className="text-muted text-sm font-bold">
+                Vérification de la connexion Supabase…
+              </div>
+            ) : diagnostic.connectionWorks ? (
               <div className="text-brand flex items-center gap-3 text-sm font-bold">
                 <CheckCircle2 className="size-5" aria-hidden="true" />
                 Connexion Supabase réussie
@@ -140,9 +171,9 @@ export default async function TestSupabasePage() {
           {diagnostic.connectionWorks && (
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="border-border rounded-2xl border p-4">
-                <p className="text-muted text-xs">Entreprises enregistrées</p>
+                <p className="text-muted text-xs">Entreprises accessibles</p>
                 <p className="mt-1 text-xl font-bold">
-                  {diagnostic.businessCount}
+                  {diagnostic.businessCount ?? "Protégé"}
                 </p>
               </div>
               <div className="border-border rounded-2xl border p-4">
@@ -152,7 +183,7 @@ export default async function TestSupabasePage() {
                 </div>
                 <p className="text-muted mt-1 text-xs">
                   {diagnostic.publicAccessIsProtected
-                    ? "Protégé par les permissions Supabase"
+                    ? "Protégé par RLS / permissions Supabase"
                     : "Client public opérationnel"}
                 </p>
               </div>
@@ -162,7 +193,7 @@ export default async function TestSupabasePage() {
           <section className="mt-8">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-bold">
-                Tables publiques détectées
+                Tables publiques attendues
               </h2>
               <span className="text-brand rounded-full bg-[#e9f5ee] px-3 py-1 text-xs font-bold">
                 {diagnostic.detectedTables.length}
@@ -182,14 +213,7 @@ export default async function TestSupabasePage() {
               </ul>
             ) : (
               <p className="text-muted mt-4 text-sm">
-                Aucune table publique n’a été détectée.
-              </p>
-            )}
-
-            {diagnostic.missingTables.length > 0 && (
-              <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-                Tables prévues mais non détectées :{" "}
-                {diagnostic.missingTables.join(", ")}.
+                Les tables seront affichées après validation de la connexion.
               </p>
             )}
           </section>
