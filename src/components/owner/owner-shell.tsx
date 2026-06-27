@@ -3,6 +3,7 @@
 import {
   BarChart3,
   Building2,
+  BookOpenCheck,
   Boxes,
   ClipboardList,
   ContactRound,
@@ -35,6 +36,7 @@ const navigation = [
   [ReceiptText, "Ventes", "/owner/sales"],
   [ClipboardList, "Rapports caisse", "/owner/cash-reports"],
   [BarChart3, "Finances", "/owner/financial-reports"],
+  [BookOpenCheck, "Comptabilité", "/owner/accounting"],
   [Settings, "Paramètres", "/owner/settings"],
 ] as const;
 
