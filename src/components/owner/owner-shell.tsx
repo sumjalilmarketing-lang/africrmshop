@@ -7,6 +7,7 @@ import {
   Boxes,
   ClipboardList,
   ContactRound,
+  FileText,
   LayoutDashboard,
   LogOut,
   Package,
@@ -37,6 +38,7 @@ const navigation = [
   [ClipboardList, "Rapports caisse", "/owner/cash-reports"],
   [BarChart3, "Finances", "/owner/financial-reports"],
   [BookOpenCheck, "Comptabilité", "/owner/accounting"],
+  [FileText, "Dépenses", "/owner/expenses"],
   [Settings, "Paramètres", "/owner/settings"],
 ] as const;
 
