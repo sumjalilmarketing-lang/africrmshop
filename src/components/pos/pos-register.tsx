@@ -30,6 +30,8 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   CashSessionPanel,
+  type PosCashMovement,
+  type PosCashReport,
   type PosCashSession,
 } from "@/components/pos/cash-session-panel";
 
@@ -370,6 +372,8 @@ export function PosRegister({
   customers,
   recentSales,
   cashSessions,
+  cashMovements,
+  cashReports,
 }: Readonly<{
   stores: PosRegisterStore[];
   products: PosRegisterProduct[];
@@ -377,6 +381,8 @@ export function PosRegister({
   customers: PosCustomer[];
   recentSales: PosRecentSale[];
   cashSessions: PosCashSession[];
+  cashMovements: PosCashMovement[];
+  cashReports: PosCashReport[];
 }>) {
   const router = useRouter();
   const [selectedStoreId, setSelectedStoreId] = useState(stores[0]?.id ?? "");
@@ -404,6 +410,16 @@ export function PosRegister({
   const selectedStore = stores.find((store) => store.id === selectedStoreId);
   const selectedCashSession =
     cashSessions.find((session) => session.storeId === selectedStoreId) ?? null;
+  const selectedCashMovements = selectedCashSession
+    ? cashMovements.filter(
+        (movement) => movement.cashSessionId === selectedCashSession.id,
+      )
+    : [];
+  const selectedCashReport = selectedCashSession
+    ? (cashReports.find(
+        (report) => report.cashSessionId === selectedCashSession.id,
+      ) ?? null)
+    : null;
   const selectedBusinessId = selectedStore?.businessId;
   const businessCustomers = customers.filter(
     (customer) =>
@@ -854,6 +870,8 @@ export function PosRegister({
               {selectedStore ? (
                 <CashSessionPanel
                   cashSession={selectedCashSession}
+                  cashMovements={selectedCashMovements}
+                  cashReport={selectedCashReport}
                   storeId={selectedStore.id}
                   storeName={selectedStore.name}
                   onChanged={() => router.refresh()}

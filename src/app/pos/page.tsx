@@ -8,6 +8,10 @@ import {
   type PosRegisterStore,
 } from "@/components/pos/pos-register";
 import type { PosCashSession } from "@/components/pos/cash-session-panel";
+import type {
+  PosCashMovement,
+  PosCashReport,
+} from "@/components/pos/cash-session-panel";
 import { getAppSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/permissions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -98,7 +102,19 @@ type PaymentRow = {
   sale_id: string;
   provider: string;
   provider_reference: string | null;
+  amount: number | string;
   payment_methods: { name: string } | null;
+};
+
+type CashMovementRow = {
+  id: string;
+  business_id: string;
+  cash_session_id: string;
+  movement_type: string;
+  amount: number | string;
+  reason: string;
+  performed_by: string | null;
+  created_at: string;
 };
 
 type CashSessionRow = {
@@ -391,7 +407,7 @@ export default async function PosPage() {
           supabaseAdmin
             .from("payments")
             .select(
-              "sale_id, provider, provider_reference, payment_methods(name)",
+              "sale_id, provider, provider_reference, amount, payment_methods(name)",
             )
             .in("sale_id", saleIds),
         ])
@@ -484,6 +500,128 @@ export default async function PosPage() {
       notes: session.notes,
     });
   }
+  const activeCashSessions = [...cashSessionsByStoreId.values()];
+  const activeCashSessionIds = activeCashSessions.map((session) => session.id);
+  const activeSessionStoreIds = activeCashSessions.map(
+    (session) => session.storeId,
+  );
+  const earliestOpenSessionAt =
+    activeCashSessions.length > 0
+      ? activeCashSessions
+          .map((session) => session.openedAt)
+          .sort((first, second) => first.localeCompare(second))[0]
+      : null;
+
+  const [cashMovementsResult, sessionSalesResult] =
+    activeCashSessions.length > 0 && earliestOpenSessionAt
+      ? await Promise.all([
+          supabaseAdmin
+            .from("cash_movements")
+            .select(
+              "id, business_id, cash_session_id, movement_type, amount, reason, performed_by, created_at",
+            )
+            .in("cash_session_id", activeCashSessionIds)
+            .order("created_at", { ascending: false }),
+          supabaseAdmin
+            .from("sales")
+            .select(
+              "id, business_id, store_id, customer_id, receipt_number, subtotal, total_amount, created_at, metadata",
+            )
+            .in("store_id", activeSessionStoreIds)
+            .eq("status", "completed")
+            .gte("created_at", earliestOpenSessionAt),
+        ])
+      : [
+          { data: [], error: null },
+          { data: [], error: null },
+        ];
+
+  if (cashMovementsResult.error || sessionSalesResult.error) {
+    throw new Error(
+      cashMovementsResult.error?.message ?? sessionSalesResult.error?.message,
+    );
+  }
+
+  const sessionSaleRows = (sessionSalesResult.data ?? []) as SaleRow[];
+  const sessionSaleIds = sessionSaleRows.map((sale) => sale.id);
+  const sessionPaymentsResult =
+    sessionSaleIds.length > 0
+      ? await supabaseAdmin
+          .from("payments")
+          .select("sale_id, provider, provider_reference, amount")
+          .in("sale_id", sessionSaleIds)
+      : { data: [], error: null };
+
+  if (sessionPaymentsResult.error) {
+    throw new Error(sessionPaymentsResult.error.message);
+  }
+
+  const cashMovements: PosCashMovement[] = (
+    (cashMovementsResult.data ?? []) as CashMovementRow[]
+  ).map((movement) => ({
+    id: movement.id,
+    businessId: movement.business_id,
+    cashSessionId: movement.cash_session_id,
+    movementType: movement.movement_type,
+    amount: toNumber(movement.amount),
+    reason: movement.reason,
+    performedBy: movement.performed_by,
+    createdAt: movement.created_at,
+  }));
+  const sessionPayments = (sessionPaymentsResult.data ?? []) as PaymentRow[];
+  const cashMovementsBySessionId = new Map<string, PosCashMovement[]>();
+  for (const movement of cashMovements) {
+    cashMovementsBySessionId.set(movement.cashSessionId, [
+      ...(cashMovementsBySessionId.get(movement.cashSessionId) ?? []),
+      movement,
+    ]);
+  }
+
+  const cashReports: PosCashReport[] = activeCashSessions.map((cashSession) => {
+    const salesForSession = sessionSaleRows.filter(
+      (sale) =>
+        sale.store_id === cashSession.storeId &&
+        sale.created_at >= cashSession.openedAt,
+    );
+    const saleIdsForSession = new Set(salesForSession.map((sale) => sale.id));
+    const paymentsForSession = sessionPayments.filter((payment) =>
+      saleIdsForSession.has(payment.sale_id),
+    );
+    const movementsForSession =
+      cashMovementsBySessionId.get(cashSession.id) ?? [];
+    const cashSalesTotal = paymentsForSession
+      .filter((payment) => payment.provider === "cash")
+      .reduce((total, payment) => total + toNumber(payment.amount), 0);
+    const mobileMoneyTotal = paymentsForSession
+      .filter((payment) => payment.provider !== "cash")
+      .reduce((total, payment) => total + toNumber(payment.amount), 0);
+    const manualCashInTotal = movementsForSession
+      .filter((movement) =>
+        ["cash_in", "deposit"].includes(movement.movementType),
+      )
+      .reduce((total, movement) => total + movement.amount, 0);
+    const manualCashOutTotal = movementsForSession
+      .filter((movement) =>
+        ["cash_out", "withdrawal"].includes(movement.movementType),
+      )
+      .reduce((total, movement) => total + movement.amount, 0);
+
+    return {
+      cashSessionId: cashSession.id,
+      openingBalance: cashSession.openingBalance,
+      cashSalesTotal,
+      mobileMoneyTotal,
+      manualCashInTotal,
+      manualCashOutTotal,
+      expectedCashBalance:
+        cashSession.openingBalance +
+        cashSalesTotal +
+        manualCashInTotal -
+        manualCashOutTotal,
+      salesCount: salesForSession.length,
+      movementCount: movementsForSession.length,
+    };
+  });
 
   return (
     <PosRegister
@@ -493,6 +631,8 @@ export default async function PosPage() {
       customers={customers}
       recentSales={recentSales}
       cashSessions={[...cashSessionsByStoreId.values()]}
+      cashMovements={cashMovements}
+      cashReports={cashReports}
     />
   );
 }

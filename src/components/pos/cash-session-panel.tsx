@@ -1,8 +1,11 @@
 "use client";
 
 import {
+  ArrowDown,
+  ArrowUp,
   Banknote,
   CheckCircle2,
+  ClipboardList,
   Loader2,
   LockKeyhole,
   UnlockKeyhole,
@@ -24,6 +27,29 @@ export type PosCashSession = {
   notes: string | null;
 };
 
+export type PosCashMovement = {
+  id: string;
+  businessId: string;
+  cashSessionId: string;
+  movementType: string;
+  amount: number;
+  reason: string;
+  performedBy: string | null;
+  createdAt: string;
+};
+
+export type PosCashReport = {
+  cashSessionId: string;
+  openingBalance: number;
+  cashSalesTotal: number;
+  mobileMoneyTotal: number;
+  manualCashInTotal: number;
+  manualCashOutTotal: number;
+  expectedCashBalance: number;
+  salesCount: number;
+  movementCount: number;
+};
+
 function formatMoney(value: number) {
   return new Intl.NumberFormat("fr-SN", {
     maximumFractionDigits: 0,
@@ -43,16 +69,21 @@ async function readApiPayload(response: Response) {
   return (await response.json().catch(() => null)) as {
     error?: string;
     cashSession?: PosCashSession;
+    cashMovement?: PosCashMovement;
   } | null;
 }
 
 export function CashSessionPanel({
   cashSession,
+  cashMovements,
+  cashReport,
   storeId,
   storeName,
   onChanged,
 }: Readonly<{
   cashSession: PosCashSession | null;
+  cashMovements: PosCashMovement[];
+  cashReport: PosCashReport | null;
   storeId: string;
   storeName: string;
   onChanged: () => void;
@@ -60,7 +91,13 @@ export function CashSessionPanel({
   const [openingBalance, setOpeningBalance] = useState("0");
   const [closingBalance, setClosingBalance] = useState("");
   const [notes, setNotes] = useState("");
+  const [movementType, setMovementType] = useState<"cash_in" | "cash_out">(
+    "cash_in",
+  );
+  const [movementAmount, setMovementAmount] = useState("");
+  const [movementReason, setMovementReason] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isMovementSubmitting, setIsMovementSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +148,43 @@ export function CashSessionPanel({
         ? "Session de caisse ouverte avec succès."
         : "Session de caisse fermée avec succès.",
     );
+    onChanged();
+  }
+
+  async function submitMovement() {
+    if (!cashSession || isMovementSubmitting) return;
+
+    setIsMovementSubmitting(true);
+    setError(null);
+    setMessage(null);
+
+    const response = await fetch("/api/pos/cash-movements", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cashSessionId: cashSession.id,
+        movementType,
+        amount: Number(movementAmount || 0),
+        reason: movementReason.trim(),
+      }),
+    }).catch(() => null);
+
+    setIsMovementSubmitting(false);
+
+    if (!response) {
+      setError("Impossible de joindre le serveur de caisse.");
+      return;
+    }
+
+    const payload = await readApiPayload(response);
+    if (!response.ok || !payload?.cashMovement) {
+      setError(payload?.error ?? "Le mouvement de caisse a échoué.");
+      return;
+    }
+
+    setMovementAmount("");
+    setMovementReason("");
+    setMessage("Mouvement de caisse enregistré avec succès.");
     onChanged();
   }
 
@@ -284,6 +358,192 @@ export function CashSessionPanel({
         <p className="mt-3 rounded-2xl border border-emerald-100 bg-white px-3 py-2 text-xs font-bold text-emerald-700">
           {message}
         </p>
+      ) : null}
+
+      {!cashSession ? (
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {[
+            [
+              "POS 15 · Mouvements",
+              "Les entrées et sorties seront disponibles dès l'ouverture de caisse.",
+            ],
+            [
+              "POS 16 · Rapport X",
+              "Le rapport de caisse sera calculé en temps réel après ouverture.",
+            ],
+          ].map(([title, description]) => (
+            <section
+              key={title}
+              className="rounded-3xl border border-dashed border-amber-200 bg-white/70 p-4"
+            >
+              <p className="text-xs font-black tracking-[0.16em] text-amber-700 uppercase">
+                {title}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-[#68736c]">
+                {description}
+              </p>
+            </section>
+          ))}
+        </div>
+      ) : null}
+
+      {cashSession && cashReport ? (
+        <section className="mt-5 rounded-3xl border border-[#dbe6df] bg-white/85 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black tracking-[0.16em] text-[#0b7a4b] uppercase">
+                POS 16 · Rapport X
+              </p>
+              <h3 className="mt-1 text-base font-black">
+                Situation de caisse en temps réel
+              </h3>
+            </div>
+            <ClipboardList className="size-5 text-[#0b7a4b]" />
+          </div>
+          <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-2xl bg-[#f8fbf9] p-3">
+              <p className="font-bold text-[#68736c]">Ventes cash</p>
+              <p className="mt-1 font-black text-[#0b7a4b]">
+                {formatMoney(cashReport.cashSalesTotal)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-[#f8fbf9] p-3">
+              <p className="font-bold text-[#68736c]">Entrées manuelles</p>
+              <p className="mt-1 font-black text-emerald-700">
+                {formatMoney(cashReport.manualCashInTotal)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-[#f8fbf9] p-3">
+              <p className="font-bold text-[#68736c]">Sorties manuelles</p>
+              <p className="mt-1 font-black text-red-700">
+                {formatMoney(cashReport.manualCashOutTotal)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-[#f8fbf9] p-3">
+              <p className="font-bold text-[#68736c]">Cash attendu</p>
+              <p className="mt-1 font-black text-[#0b7a4b]">
+                {formatMoney(cashReport.expectedCashBalance)}
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 text-[11px] leading-5 text-[#68736c]">
+            {cashReport.salesCount} vente(s), {cashReport.movementCount}{" "}
+            mouvement(s), {formatMoney(cashReport.mobileMoneyTotal)} encaissé(s)
+            hors espèces.
+          </p>
+        </section>
+      ) : null}
+
+      {cashSession ? (
+        <section className="mt-5 rounded-3xl border border-[#dbe6df] bg-white/85 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black tracking-[0.16em] text-[#0b7a4b] uppercase">
+                POS 15 · Mouvements
+              </p>
+              <h3 className="mt-1 text-base font-black">
+                Entrées et sorties de caisse
+              </h3>
+            </div>
+            <Banknote className="size-5 text-[#0b7a4b]" />
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-[0.8fr_1fr_1.4fr_auto]">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                ["cash_in", "Entrée", ArrowUp],
+                ["cash_out", "Sortie", ArrowDown],
+              ].map(([value, label, Icon]) => {
+                const MovementIcon = Icon as typeof ArrowUp;
+                return (
+                  <button
+                    key={value as string}
+                    type="button"
+                    onClick={() =>
+                      setMovementType(value as "cash_in" | "cash_out")
+                    }
+                    className={cn(
+                      "flex h-12 items-center justify-center gap-2 rounded-2xl border text-xs font-black",
+                      movementType === value
+                        ? "border-[#0b7a4b] bg-[#e9f5ee] text-[#0b7a4b]"
+                        : "border-[#dbe6df] text-[#68736c]",
+                    )}
+                  >
+                    <MovementIcon className="size-4" />
+                    {label as string}
+                  </button>
+                );
+              })}
+            </div>
+            <input
+              value={movementAmount}
+              onChange={(event) => setMovementAmount(event.target.value)}
+              inputMode="numeric"
+              className="h-12 rounded-2xl border border-[#dbe6df] bg-white px-4 text-sm font-bold outline-none focus:border-[#0b7a4b] focus:ring-4 focus:ring-[#0b7a4b]/10"
+              placeholder="Montant"
+            />
+            <input
+              value={movementReason}
+              onChange={(event) => setMovementReason(event.target.value)}
+              className="h-12 rounded-2xl border border-[#dbe6df] bg-white px-4 text-sm font-bold outline-none focus:border-[#0b7a4b] focus:ring-4 focus:ring-[#0b7a4b]/10"
+              placeholder="Motif obligatoire"
+            />
+            <button
+              type="button"
+              onClick={submitMovement}
+              disabled={
+                isMovementSubmitting ||
+                Number(movementAmount || 0) <= 0 ||
+                movementReason.trim().length < 3
+              }
+              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#0b7a4b] px-5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              {isMovementSubmitting ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="size-4" />
+              )}
+              Ajouter
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {cashMovements.length > 0 ? (
+              cashMovements.slice(0, 6).map((movement) => {
+                const isIn = ["cash_in", "deposit"].includes(
+                  movement.movementType,
+                );
+
+                return (
+                  <article
+                    key={movement.id}
+                    className="flex items-center justify-between gap-3 rounded-2xl border border-[#edf0ee] bg-[#f8fbf9] px-3 py-2 text-xs"
+                  >
+                    <div>
+                      <p className="font-black">{movement.reason}</p>
+                      <p className="mt-0.5 text-[10px] text-[#68736c]">
+                        {formatDateTime(movement.createdAt)}
+                      </p>
+                    </div>
+                    <span
+                      className={cn(
+                        "font-black",
+                        isIn ? "text-emerald-700" : "text-red-700",
+                      )}
+                    >
+                      {isIn ? "+" : "-"}
+                      {formatMoney(movement.amount)}
+                    </span>
+                  </article>
+                );
+              })
+            ) : (
+              <p className="rounded-2xl border border-dashed border-[#dbe6df] bg-[#f8fbf9] px-4 py-5 text-center text-xs text-[#68736c]">
+                Aucun mouvement manuel pour cette session.
+              </p>
+            )}
+          </div>
+        </section>
       ) : null}
     </section>
   );

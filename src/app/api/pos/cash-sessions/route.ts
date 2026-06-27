@@ -58,6 +58,11 @@ type PaymentRow = {
   amount: number | string;
 };
 
+type CashMovementRow = {
+  movement_type: string;
+  amount: number | string;
+};
+
 function toNumber(value: unknown) {
   return typeof value === "number" ? value : Number(value ?? 0);
 }
@@ -139,7 +144,31 @@ async function calculateExpectedClosingBalance(session: CashSessionRow) {
     0,
   );
 
-  return toNumber(session.opening_balance) + cashTotal;
+  const { data: movementsData, error: movementsError } = await supabaseAdmin
+    .from("cash_movements")
+    .select("movement_type, amount")
+    .eq("business_id", session.business_id)
+    .eq("cash_session_id", session.id);
+
+  if (movementsError) {
+    throw new Error(movementsError.message);
+  }
+
+  const manualMovementTotal = (
+    (movementsData ?? []) as CashMovementRow[]
+  ).reduce((total, movement) => {
+    const amount = toNumber(movement.amount);
+    if (["cash_in", "deposit"].includes(movement.movement_type)) {
+      return total + amount;
+    }
+    if (["cash_out", "withdrawal"].includes(movement.movement_type)) {
+      return total - amount;
+    }
+
+    return total;
+  }, 0);
+
+  return toNumber(session.opening_balance) + cashTotal + manualMovementTotal;
 }
 
 async function openCashSession(
