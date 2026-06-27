@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BarChart3,
   Building2,
   Boxes,
   ClipboardList,
@@ -33,6 +34,7 @@ const navigation = [
   [ShoppingCart, "Caisse POS", "/pos"],
   [ReceiptText, "Ventes", "/owner/sales"],
   [ClipboardList, "Rapports caisse", "/owner/cash-reports"],
+  [BarChart3, "Finances", "/owner/financial-reports"],
   [Settings, "Paramètres", "/owner/settings"],
 ] as const;
 
