@@ -3,6 +3,7 @@
 import {
   Building2,
   Boxes,
+  ClipboardList,
   ContactRound,
   LayoutDashboard,
   LogOut,
@@ -29,6 +30,7 @@ const navigation = [
   [ContactRound, "Clients", "/owner/customers"],
   [Users, "Employés", "/owner/employees"],
   [ShoppingCart, "Caisse POS", "/pos"],
+  [ClipboardList, "Rapports caisse", "/owner/cash-reports"],
   [Settings, "Paramètres", "/owner/settings"],
 ] as const;
 
