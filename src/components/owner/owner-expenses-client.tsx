@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Clock3,
   Download,
+  ExternalLink,
   FileText,
   Loader2,
   Plus,
@@ -25,9 +26,14 @@ export type OwnerExpenseStore = {
   name: string;
 };
 
-export type OwnerExpenseDocumentCount = {
+export type OwnerExpenseDocument = {
+  id: string;
   expenseId: string;
-  count: number;
+  fileName: string;
+  mimeType: string | null;
+  fileSize: number;
+  createdAt: string;
+  downloadUrl: string | null;
 };
 
 export type OwnerExpenseItem = {
@@ -101,6 +107,13 @@ function formatDate(value: string | null) {
   }).format(new Date(value));
 }
 
+function formatFileSize(value: number) {
+  if (value < 1024) return `${value} o`;
+  if (value < 1024 * 1024) return `${Math.round(value / 1024)} Ko`;
+
+  return `${(value / 1024 / 1024).toFixed(1)} Mo`;
+}
+
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -132,11 +145,12 @@ export function OwnerExpensesClient({
   businesses,
   stores,
   expenses,
+  documents,
 }: Readonly<{
   businesses: OwnerExpenseBusiness[];
   stores: OwnerExpenseStore[];
   expenses: OwnerExpenseItem[];
-  documentCounts: OwnerExpenseDocumentCount[];
+  documents: OwnerExpenseDocument[];
 }>) {
   const [businessId, setBusinessId] = useState(businesses[0]?.id ?? "");
   const [storeId, setStoreId] = useState("all");
@@ -147,6 +161,8 @@ export function OwnerExpensesClient({
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [isDocumentUploading, setIsDocumentUploading] = useState(false);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -186,6 +202,9 @@ export function OwnerExpensesClient({
     filteredExpenses.find((expense) => expense.id === selectedExpenseId) ??
     filteredExpenses[0] ??
     null;
+  const selectedExpenseDocuments = selectedExpense
+    ? documents.filter((document) => document.expenseId === selectedExpense.id)
+    : [];
   const totalExpenses = filteredExpenses.reduce(
     (total, expense) => total + expense.totalAmount,
     0,
@@ -290,6 +309,50 @@ export function OwnerExpensesClient({
     }
 
     setMessage({ type: "success", text: "Statut dépense mis à jour." });
+    window.location.reload();
+  }
+
+  async function uploadExpenseDocument(
+    event: React.FormEvent<HTMLFormElement>,
+  ) {
+    event.preventDefault();
+    if (!selectedExpense || !documentFile || isDocumentUploading) return;
+
+    const formData = new FormData();
+    formData.append("file", documentFile);
+    setIsDocumentUploading(true);
+    setMessage(null);
+
+    const response = await fetch(
+      `/api/owner/expenses/${selectedExpense.id}/documents`,
+      {
+        method: "POST",
+        body: formData,
+      },
+    ).catch(() => null);
+    setIsDocumentUploading(false);
+
+    if (!response) {
+      setMessage({
+        type: "error",
+        text: "Serveur justificatifs indisponible.",
+      });
+      return;
+    }
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+    } | null;
+    if (!response.ok) {
+      setMessage({
+        type: "error",
+        text: payload?.error ?? "Le justificatif n'a pas pu être envoyé.",
+      });
+      return;
+    }
+
+    setMessage({ type: "success", text: "Justificatif ajouté avec succès." });
+    setDocumentFile(null);
     window.location.reload();
   }
 
@@ -828,10 +891,87 @@ export function OwnerExpensesClient({
                     ) : null}
                   </div>
 
+                  <section className="mt-5 rounded-2xl border border-[#edf0ee] p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-black">Justificatifs</h3>
+                        <p className="text-muted mt-1 text-xs">
+                          PDF, JPG, PNG ou WebP · 5 Mo maximum.
+                        </p>
+                      </div>
+                      <FileText className="size-5 text-[#0b7a4b]" />
+                    </div>
+
+                    <form
+                      onSubmit={uploadExpenseDocument}
+                      className="mt-4 space-y-3"
+                    >
+                      <input
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/png,image/webp"
+                        onChange={(event) =>
+                          setDocumentFile(event.target.files?.[0] ?? null)
+                        }
+                        className="block w-full rounded-2xl border border-[#dbe4dd] bg-white px-4 py-3 text-xs file:mr-4 file:rounded-xl file:border-0 file:bg-[#e9f5ee] file:px-3 file:py-2 file:text-xs file:font-black file:text-[#0b7a4b]"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!documentFile || isDocumentUploading}
+                        className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-2xl bg-[#14251d] px-4 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isDocumentUploading ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Plus className="size-4" />
+                        )}
+                        Ajouter le justificatif
+                      </button>
+                    </form>
+
+                    <div className="mt-4 space-y-2">
+                      {selectedExpenseDocuments.length > 0 ? (
+                        selectedExpenseDocuments.map((document) => (
+                          <div
+                            key={document.id}
+                            className="flex items-center justify-between gap-3 rounded-2xl bg-[#f8fbf9] px-4 py-3 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-black">
+                                {document.fileName}
+                              </p>
+                              <p className="text-muted mt-1">
+                                {formatFileSize(document.fileSize)} ·{" "}
+                                {formatDate(document.createdAt)}
+                              </p>
+                            </div>
+                            {document.downloadUrl ? (
+                              <a
+                                href={document.downloadUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex shrink-0 items-center gap-1 rounded-xl bg-white px-3 py-2 font-black text-[#0b7a4b]"
+                              >
+                                <ExternalLink className="size-3.5" />
+                                Ouvrir
+                              </a>
+                            ) : (
+                              <span className="text-muted shrink-0 font-bold">
+                                Lien indisponible
+                              </span>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-muted rounded-2xl bg-[#f8fbf9] px-4 py-3 text-xs">
+                          Aucun justificatif lié à cette dépense.
+                        </p>
+                      )}
+                    </div>
+                  </section>
+
                   <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
-                    Le dépôt de justificatifs fichiers sera raccordé au stockage
-                    Supabase dans une phase dédiée. Le compteur affiche les
-                    documents déjà liés en base.
+                    Les liens de téléchargement sont signés temporairement et
+                    expirent automatiquement pour protéger les justificatifs.
                   </div>
                 </div>
               ) : (

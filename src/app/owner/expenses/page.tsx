@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import {
   OwnerExpensesClient,
   type OwnerExpenseBusiness,
-  type OwnerExpenseDocumentCount,
+  type OwnerExpenseDocument,
   type OwnerExpenseItem,
   type OwnerExpenseStore,
 } from "@/components/owner/owner-expenses-client";
@@ -36,7 +36,14 @@ type ExpenseRow = {
 };
 
 type ExpenseDocumentRow = {
+  id: string;
   expense_id: string;
+  file_name: string;
+  storage_bucket: string;
+  storage_path: string;
+  mime_type: string | null;
+  file_size: number | string | null;
+  created_at: string;
 };
 
 function toNumber(value: unknown) {
@@ -97,16 +104,37 @@ export default async function OwnerExpensesPage() {
   const documentsResult = expenseIds.length
     ? await supabaseAdmin
         .from("expense_documents")
-        .select("expense_id")
+        .select(
+          "id, expense_id, file_name, storage_bucket, storage_path, mime_type, file_size, created_at",
+        )
         .in("expense_id", expenseIds)
+        .order("created_at", { ascending: false })
     : { data: [], error: null };
 
   if (documentsResult.error) {
     throw new Error(documentsResult.error.message);
   }
 
+  const documentRows = (documentsResult.data ?? []) as ExpenseDocumentRow[];
+  const documents: OwnerExpenseDocument[] = await Promise.all(
+    documentRows.map(async (document) => {
+      const signedUrlResult = await supabaseAdmin.storage
+        .from(document.storage_bucket)
+        .createSignedUrl(document.storage_path, 60 * 60);
+
+      return {
+        id: document.id,
+        expenseId: document.expense_id,
+        fileName: document.file_name,
+        mimeType: document.mime_type,
+        fileSize: toNumber(document.file_size),
+        createdAt: document.created_at,
+        downloadUrl: signedUrlResult.data?.signedUrl ?? null,
+      };
+    }),
+  );
   const documentCountsByExpenseId = new Map<string, number>();
-  for (const document of (documentsResult.data ?? []) as ExpenseDocumentRow[]) {
+  for (const document of documentRows) {
     documentCountsByExpenseId.set(
       document.expense_id,
       (documentCountsByExpenseId.get(document.expense_id) ?? 0) + 1,
@@ -116,9 +144,6 @@ export default async function OwnerExpensesPage() {
     businesses.map((business) => [business.id, business.name]),
   );
   const storeNames = new Map(stores.map((store) => [store.id, store.name]));
-  const documentCounts: OwnerExpenseDocumentCount[] = [
-    ...documentCountsByExpenseId.entries(),
-  ].map(([expenseId, count]) => ({ expenseId, count }));
   const expenses: OwnerExpenseItem[] = expenseRows.map((expense) => ({
     id: expense.id,
     businessId: expense.business_id,
@@ -160,7 +185,7 @@ export default async function OwnerExpensesPage() {
         businesses={businesses}
         stores={stores}
         expenses={expenses}
-        documentCounts={documentCounts}
+        documents={documents}
       />
     </div>
   );
