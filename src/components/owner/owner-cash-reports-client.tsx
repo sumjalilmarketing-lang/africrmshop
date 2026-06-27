@@ -5,6 +5,7 @@ import {
   Banknote,
   CalendarDays,
   ClipboardList,
+  Download,
   Printer,
   ReceiptText,
   Search,
@@ -12,6 +13,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { downloadCsvFile } from "@/lib/csv-export";
 import { cn } from "@/lib/utils";
 import type { CashSessionReport } from "@/lib/pos-cash-reports";
 
@@ -50,6 +52,14 @@ function formatDateTime(value: string) {
 
 function formatDateInput(value: string) {
   return value.slice(0, 10);
+}
+
+function getSafeFilePart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 export function OwnerCashReportsClient({
@@ -117,6 +127,62 @@ export function OwnerCashReportsClient({
     setBusinessId(nextBusinessId);
     setStoreId("all");
     setSelectedReportId("");
+  }
+
+  function exportFilteredReports() {
+    const selectedBusiness =
+      businesses.find((business) => business.id === businessId)?.name ??
+      "toutes-entreprises";
+    const filename = [
+      "africrm-rapports-z",
+      getSafeFilePart(selectedBusiness),
+      date || "periode",
+    ]
+      .filter(Boolean)
+      .join("-");
+
+    downloadCsvFile(filename, [
+      [
+        "Entreprise",
+        "Boutique",
+        "Ouverture",
+        "Fermeture",
+        "Ouvert par",
+        "Ferme par",
+        "Nombre ventes",
+        "Total ventes",
+        "Ventes cash",
+        "Mobile money",
+        "Entrees manuelles",
+        "Sorties manuelles",
+        "Cash attendu",
+        "Cash compte",
+        "Ecart",
+        "Nombre mouvements",
+        "Notes",
+        "Session ID",
+      ],
+      ...filteredReports.map((report) => [
+        report.businessName,
+        report.storeName,
+        formatDateTime(report.openedAt),
+        formatDateTime(report.closedAt),
+        report.openedByName ?? "",
+        report.closedByName ?? "",
+        report.salesCount,
+        report.grossSalesTotal,
+        report.cashSalesTotal,
+        report.mobileMoneyTotal,
+        report.manualCashInTotal,
+        report.manualCashOutTotal,
+        report.calculatedExpectedCash,
+        report.closingBalance,
+        report.differenceAmount,
+        report.movements.length,
+        report.notes ?? "",
+        report.id,
+      ]),
+    ]);
   }
 
   return (
@@ -230,6 +296,20 @@ export function OwnerCashReportsClient({
               />
             </label>
           </div>
+        </div>
+        <div className="mt-5 flex flex-col gap-3 border-t border-[#edf0ee] pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted text-xs font-bold">
+            {filteredReports.length} rapport(s) dans l’export actuel.
+          </p>
+          <button
+            type="button"
+            onClick={exportFilteredReports}
+            disabled={filteredReports.length === 0}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#14251d] px-4 text-xs font-black text-white transition disabled:cursor-not-allowed disabled:opacity-45 print:hidden"
+          >
+            <Download className="size-4" />
+            Exporter CSV
+          </button>
         </div>
       </section>
 

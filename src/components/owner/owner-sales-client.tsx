@@ -6,6 +6,7 @@ import {
   CalendarDays,
   CheckCircle2,
   CreditCard,
+  Download,
   ReceiptText,
   RotateCcw,
   Search,
@@ -13,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { downloadCsvFile } from "@/lib/csv-export";
 import { cn } from "@/lib/utils";
 
 export type OwnerSaleBusiness = {
@@ -97,6 +99,14 @@ function formatDateInput(value: string) {
   return value.slice(0, 10);
 }
 
+function getSafeFilePart(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
 function getStatusBadgeClass(status: string) {
   if (status === "completed") return "bg-emerald-50 text-emerald-700";
   if (status === "refunded") return "bg-red-50 text-red-700";
@@ -173,6 +183,63 @@ export function OwnerSalesClient({
     setBusinessId(nextBusinessId);
     setStoreId("all");
     setSelectedSaleId("");
+  }
+
+  function exportFilteredSales() {
+    const selectedBusiness =
+      businesses.find((business) => business.id === businessId)?.name ??
+      "toutes-entreprises";
+    const filename = [
+      "africrm-ventes",
+      getSafeFilePart(selectedBusiness),
+      date || "periode",
+      status === "all" ? "tous-statuts" : status,
+    ]
+      .filter(Boolean)
+      .join("-");
+
+    downloadCsvFile(filename, [
+      [
+        "Ticket",
+        "Date",
+        "Entreprise",
+        "Boutique",
+        "Client",
+        "Statut vente",
+        "Statut paiement",
+        "Methode paiement",
+        "Reference paiement",
+        "Sous-total",
+        "TVA",
+        "Total",
+        "Montant paye",
+        "Action apres-vente",
+        "Motif apres-vente",
+        "Stock restaure",
+      ],
+      ...filteredSales.map((sale) => [
+        sale.receiptNumber,
+        formatDateTime(sale.createdAt),
+        sale.businessName,
+        sale.storeName,
+        sale.customerName ?? "Client comptoir",
+        statusLabels[sale.status] ?? sale.status,
+        paymentStatusLabels[sale.paymentStatus] ?? sale.paymentStatus,
+        sale.paymentMethodName,
+        sale.paymentReference,
+        sale.subtotal,
+        sale.taxTotal,
+        sale.totalAmount,
+        sale.paidAmount,
+        sale.afterSaleAction ?? "",
+        sale.afterSaleReason ?? "",
+        sale.afterSaleRestocked === null
+          ? ""
+          : sale.afterSaleRestocked
+            ? "oui"
+            : "non",
+      ]),
+    ]);
   }
 
   return (
@@ -292,6 +359,20 @@ export function OwnerSalesClient({
               />
             </label>
           </div>
+        </div>
+        <div className="mt-5 flex flex-col gap-3 border-t border-[#edf0ee] pt-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-muted text-xs font-bold">
+            {filteredSales.length} vente(s) dans l’export actuel.
+          </p>
+          <button
+            type="button"
+            onClick={exportFilteredSales}
+            disabled={filteredSales.length === 0}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-2xl bg-[#14251d] px-4 text-xs font-black text-white transition disabled:cursor-not-allowed disabled:opacity-45 print:hidden"
+          >
+            <Download className="size-4" />
+            Exporter CSV
+          </button>
         </div>
       </section>
 
