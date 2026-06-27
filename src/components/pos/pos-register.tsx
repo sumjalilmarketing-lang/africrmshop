@@ -14,8 +14,10 @@ import {
   Plus,
   Printer,
   ReceiptText,
+  RotateCcw,
   ScanLine,
   Search,
+  ShieldAlert,
   ShoppingCart,
   Store,
   TrendingUp,
@@ -129,6 +131,11 @@ type SaleReceipt = {
   taxTotal: number;
   total: number;
   lines: SaleReceiptLine[];
+};
+
+type SaleRefundAction = {
+  sale: PosRecentSale;
+  action: "cancel" | "refund";
 };
 
 function formatMoney(value: number) {
@@ -402,6 +409,12 @@ export function PosRegister({
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [checkoutSuccess, setCheckoutSuccess] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<SaleReceipt | null>(null);
+  const [saleRefundAction, setSaleRefundAction] =
+    useState<SaleRefundAction | null>(null);
+  const [saleRefundReason, setSaleRefundReason] = useState("");
+  const [saleRefundRestock, setSaleRefundRestock] = useState(true);
+  const [isRefundSubmitting, setIsRefundSubmitting] = useState(false);
+  const [saleRefundError, setSaleRefundError] = useState<string | null>(null);
   const [saleSearch, setSaleSearch] = useState("");
   const [saleDateFilter, setSaleDateFilter] = useState<SaleDateFilter>("today");
   const [saleStoreFilter, setSaleStoreFilter] = useState("all");
@@ -797,6 +810,65 @@ export function PosRegister({
     setCheckoutSuccess(
       `Vente encaissée avec succès · Reçu ${payload?.receiptNumber ?? "POS"}`,
     );
+    router.refresh();
+  }
+
+  function openSaleRefundAction(
+    sale: PosRecentSale,
+    action: "cancel" | "refund",
+  ) {
+    setSaleRefundAction({ sale, action });
+    setSaleRefundReason("");
+    setSaleRefundRestock(true);
+    setSaleRefundError(null);
+  }
+
+  async function submitSaleRefundAction() {
+    if (!saleRefundAction || isRefundSubmitting) return;
+
+    setIsRefundSubmitting(true);
+    setSaleRefundError(null);
+
+    const response = await fetch(
+      `/api/pos/sales/${saleRefundAction.sale.id}/refunds`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: saleRefundAction.action,
+          reason: saleRefundReason.trim(),
+          restock: saleRefundRestock,
+        }),
+      },
+    ).catch(() => null);
+
+    setIsRefundSubmitting(false);
+
+    if (!response) {
+      setSaleRefundError("Impossible de joindre le serveur de caisse.");
+      return;
+    }
+
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      receiptNumber?: string | null;
+    } | null;
+
+    if (!response.ok) {
+      setSaleRefundError(
+        payload?.error ?? "L'opération sur la vente a échoué.",
+      );
+      return;
+    }
+
+    setCheckoutSuccess(
+      saleRefundAction.action === "cancel"
+        ? `Vente ${payload?.receiptNumber ?? saleRefundAction.sale.receiptNumber} annulée avec succès.`
+        : `Vente ${payload?.receiptNumber ?? saleRefundAction.sale.receiptNumber} remboursée avec succès.`,
+    );
+    setSaleRefundAction(null);
+    setSaleRefundReason("");
+    setSaleRefundRestock(true);
     router.refresh();
   }
 
@@ -1526,19 +1598,37 @@ export function PosRegister({
                         {formatMoney(sale.total)}
                       </p>
                     </div>
-                    <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                       <p className="text-[10px] font-bold text-[#68736c]">
                         {sale.paymentMethodName} · {sale.lines.length} ligne
                         {sale.lines.length > 1 ? "s" : ""}
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => openRecentSaleReceipt(sale)}
-                        className="inline-flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-[10px] font-black text-[#0b7a4b]"
-                      >
-                        <ReceiptText className="size-3.5" />
-                        Reçu
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openRecentSaleReceipt(sale)}
+                          className="inline-flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-[10px] font-black text-[#0b7a4b]"
+                        >
+                          <ReceiptText className="size-3.5" />
+                          Reçu
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openSaleRefundAction(sale, "cancel")}
+                          className="inline-flex items-center gap-1 rounded-xl bg-amber-50 px-3 py-2 text-[10px] font-black text-amber-700"
+                        >
+                          <ShieldAlert className="size-3.5" />
+                          Annuler
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openSaleRefundAction(sale, "refund")}
+                          className="inline-flex items-center gap-1 rounded-xl bg-red-50 px-3 py-2 text-[10px] font-black text-red-700"
+                        >
+                          <RotateCcw className="size-3.5" />
+                          Rembourser
+                        </button>
+                      </div>
                     </div>
                   </article>
                 ))}
@@ -1700,6 +1790,103 @@ export function PosRegister({
                   Nouvelle vente
                 </button>
               </div>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {saleRefundAction ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-[#14251d]/60 px-4 py-6 backdrop-blur-sm">
+          <section className="w-full max-w-lg rounded-[2rem] bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-black tracking-[0.2em] text-red-700 uppercase">
+                  POS 18 · Contrôle sensible
+                </p>
+                <h2 className="mt-2 text-xl font-black">
+                  {saleRefundAction.action === "cancel"
+                    ? "Annuler la vente"
+                    : "Rembourser la vente"}
+                </h2>
+                <p className="mt-1 text-sm text-[#68736c]">
+                  {saleRefundAction.sale.receiptNumber} ·{" "}
+                  {formatMoney(saleRefundAction.sale.total)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSaleRefundAction(null)}
+                className="grid size-10 place-items-center rounded-2xl border border-[#dbe6df] text-[#68736c]"
+                aria-label="Fermer"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-xs leading-5 text-amber-800">
+              Cette action modifie la vente, le paiement et peut remettre les
+              produits en stock. Elle sera auditée pour la sécurité.
+            </div>
+
+            <label className="mt-5 block">
+              <span className="text-xs font-black text-[#68736c]">
+                Motif obligatoire
+              </span>
+              <textarea
+                value={saleRefundReason}
+                onChange={(event) => setSaleRefundReason(event.target.value)}
+                rows={4}
+                className="mt-2 w-full rounded-2xl border border-[#dbe6df] bg-[#f8fbf9] px-4 py-3 text-sm font-bold outline-none focus:border-[#0b7a4b] focus:ring-4 focus:ring-[#0b7a4b]/10"
+                placeholder="Ex : erreur de saisie, client remboursé, retour article..."
+              />
+            </label>
+
+            <label className="mt-4 flex items-start gap-3 rounded-2xl border border-[#dbe6df] bg-[#f8fbf9] p-4 text-xs">
+              <input
+                type="checkbox"
+                checked={saleRefundRestock}
+                onChange={(event) => setSaleRefundRestock(event.target.checked)}
+                className="mt-0.5 size-4 accent-[#0b7a4b]"
+              />
+              <span>
+                <strong className="block">
+                  Remettre les articles en stock
+                </strong>
+                <span className="mt-1 block text-[#68736c]">
+                  Décochez uniquement si les articles ne sont pas revendables.
+                </span>
+              </span>
+            </label>
+
+            {saleRefundError ? (
+              <p className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-xs font-bold text-red-700">
+                {saleRefundError}
+              </p>
+            ) : null}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setSaleRefundAction(null)}
+                className="h-12 rounded-2xl border border-[#dbe6df] px-5 text-xs font-black text-[#68736c]"
+              >
+                Fermer
+              </button>
+              <button
+                type="button"
+                onClick={submitSaleRefundAction}
+                disabled={
+                  isRefundSubmitting || saleRefundReason.trim().length < 5
+                }
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-red-600 px-5 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {isRefundSubmitting ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <RotateCcw className="size-4" />
+                )}
+                Confirmer
+              </button>
             </div>
           </section>
         </div>
