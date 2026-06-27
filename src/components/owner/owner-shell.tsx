@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Package,
+  ReceiptText,
   Settings,
   ShoppingCart,
   Store,
@@ -30,6 +31,7 @@ const navigation = [
   [ContactRound, "Clients", "/owner/customers"],
   [Users, "Employés", "/owner/employees"],
   [ShoppingCart, "Caisse POS", "/pos"],
+  [ReceiptText, "Ventes", "/owner/sales"],
   [ClipboardList, "Rapports caisse", "/owner/cash-reports"],
   [Settings, "Paramètres", "/owner/settings"],
 ] as const;
