@@ -6,7 +6,11 @@ import {
   type OwnerNotificationStore,
 } from "@/components/owner/owner-notifications-client";
 import { getOwnerSession } from "@/lib/auth";
-import { buildOwnerNotifications } from "@/lib/owner-notifications";
+import {
+  buildOwnerNotifications,
+  mergeOwnerNotifications,
+  type PersistedNotificationInput,
+} from "@/lib/owner-notifications";
 import { getOwnerBusinesses } from "@/lib/owner-dashboard";
 import { buildOwnerRiskAlerts } from "@/lib/owner-risk-alerts";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -79,6 +83,20 @@ type ProductRow = {
   name: string;
 };
 
+type NotificationRow = {
+  id: string;
+  business_id: string;
+  recipient_user_id: string | null;
+  title: string;
+  body: string;
+  category: string;
+  status: string;
+  action_url: string | null;
+  data: Record<string, unknown> | null;
+  read_at: string | null;
+  created_at: string;
+};
+
 function toNumber(value: unknown) {
   return typeof value === "number" ? value : Number(value ?? 0);
 }
@@ -103,6 +121,7 @@ export default async function OwnerNotificationsPage() {
     cashSessionsResult,
     stockMovementsResult,
     expensesResult,
+    notificationsResult,
   ] = businessIds.length
     ? await Promise.all([
         supabaseAdmin
@@ -148,8 +167,20 @@ export default async function OwnerNotificationsPage() {
           .in("status", ["pending", "approved", "rejected"])
           .order("created_at", { ascending: false })
           .limit(500),
+        supabaseAdmin
+          .from("notifications")
+          .select(
+            "id, business_id, recipient_user_id, title, body, category, status, action_url, data, read_at, created_at",
+          )
+          .in("business_id", businessIds)
+          .or(
+            `recipient_user_id.is.null,recipient_user_id.eq.${owner.profileId}`,
+          )
+          .order("created_at", { ascending: false })
+          .limit(250),
       ])
     : [
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
@@ -162,14 +193,16 @@ export default async function OwnerNotificationsPage() {
     salesResult.error ||
     cashSessionsResult.error ||
     stockMovementsResult.error ||
-    expensesResult.error
+    expensesResult.error ||
+    notificationsResult.error
   ) {
     throw new Error(
       storesResult.error?.message ??
         salesResult.error?.message ??
         cashSessionsResult.error?.message ??
         stockMovementsResult.error?.message ??
-        expensesResult.error?.message,
+        expensesResult.error?.message ??
+        notificationsResult.error?.message,
     );
   }
 
@@ -263,7 +296,7 @@ export default async function OwnerNotificationsPage() {
       createdAt: movement.created_at,
     })),
   });
-  const notifications = buildOwnerNotifications({
+  const computedNotifications = buildOwnerNotifications({
     today: new Date().toISOString().slice(0, 10),
     riskAlerts,
     expenses: ((expensesResult.data ?? []) as ExpenseRow[]).map((expense) => ({
@@ -277,6 +310,24 @@ export default async function OwnerNotificationsPage() {
       createdAt: expense.created_at,
       rejectionReason: expense.rejection_reason,
     })),
+  });
+  const notifications = mergeOwnerNotifications({
+    computed: computedNotifications,
+    persisted: ((notificationsResult.data ?? []) as NotificationRow[]).map(
+      (notification): PersistedNotificationInput => ({
+        id: notification.id,
+        businessId: notification.business_id,
+        recipientUserId: notification.recipient_user_id,
+        title: notification.title,
+        body: notification.body,
+        category: notification.category,
+        status: notification.status,
+        actionUrl: notification.action_url,
+        data: notification.data,
+        readAt: notification.read_at,
+        createdAt: notification.created_at,
+      }),
+    ),
   });
   const enrichedNotifications: OwnerNotificationItem[] = notifications.map(
     (notification) => ({
@@ -292,7 +343,7 @@ export default async function OwnerNotificationsPage() {
     <div className="mx-auto max-w-7xl">
       <div className="mb-7">
         <p className="text-xs font-black tracking-[0.3em] text-[#0b7a4b] uppercase">
-          POS 27
+          POS 28
         </p>
         <h1 className="mt-3 text-3xl font-black">Notifications</h1>
         <p className="text-muted mt-2 max-w-2xl text-sm">

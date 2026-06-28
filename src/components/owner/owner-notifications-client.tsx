@@ -8,7 +8,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { downloadCsvFile } from "@/lib/csv-export";
 import type {
   OwnerNotification,
@@ -50,6 +50,8 @@ const typeLabels: Record<OwnerNotificationType, string> = {
   expense_due: "Échéance dépense",
   expense_pending: "Dépense à valider",
   expense_rejected: "Dépense rejetée",
+  system: "Système",
+  other: "Autre",
 };
 
 function formatMoney(value: number | null) {
@@ -89,19 +91,24 @@ export function OwnerNotificationsClient({
   stores: OwnerNotificationStore[];
   notifications: OwnerNotificationItem[];
 }>) {
+  const [notificationItems, setNotificationItems] = useState(notifications);
   const [businessId, setBusinessId] = useState(businesses[0]?.id ?? "");
   const [storeId, setStoreId] = useState("all");
   const [priority, setPriority] = useState<OwnerNotificationPriority | "all">(
     "all",
   );
   const [type, setType] = useState<OwnerNotificationType | "all">("all");
+  const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">(
+    "all",
+  );
+  const [isPending, startTransition] = useTransition();
 
   const filteredStores = stores.filter(
     (store) => store.businessId === businessId,
   );
   const filteredNotifications = useMemo(
     () =>
-      notifications.filter((notification) => {
+      notificationItems.filter((notification) => {
         if (businessId && notification.businessId !== businessId) return false;
         if (storeId === "none" && notification.storeId !== null) return false;
         if (
@@ -115,10 +122,12 @@ export function OwnerNotificationsClient({
           return false;
         }
         if (type !== "all" && notification.type !== type) return false;
+        if (readFilter === "unread" && notification.isRead) return false;
+        if (readFilter === "read" && !notification.isRead) return false;
 
         return true;
       }),
-    [businessId, notifications, priority, storeId, type],
+    [businessId, notificationItems, priority, readFilter, storeId, type],
   );
   const selectedBusiness =
     businesses.find((business) => business.id === businessId)?.name ??
@@ -129,8 +138,9 @@ export function OwnerNotificationsClient({
       medium: accumulator.medium + (notification.priority === "medium" ? 1 : 0),
       low: accumulator.low + (notification.priority === "low" ? 1 : 0),
       amount: accumulator.amount + Math.abs(notification.amount ?? 0),
+      unread: accumulator.unread + (!notification.isRead ? 1 : 0),
     }),
-    { high: 0, medium: 0, low: 0, amount: 0 },
+    { high: 0, medium: 0, low: 0, amount: 0, unread: 0 },
   );
 
   function changeBusiness(nextBusinessId: string) {
@@ -154,6 +164,7 @@ export function OwnerNotificationsClient({
         "Titre",
         "Description",
         "Montant",
+        "Statut lecture",
         "Action",
       ],
       ...filteredNotifications.map((notification) => [
@@ -165,9 +176,36 @@ export function OwnerNotificationsClient({
         notification.title,
         notification.description,
         notification.amount ?? "",
+        notification.isRead ? "Lue" : "Non lue",
         notification.actionLabel,
       ]),
     ]);
+  }
+
+  function updateReadState(notification: OwnerNotificationItem, read: boolean) {
+    if (!notification.persistedId || !notification.canMarkRead) return;
+
+    const previousItems = notificationItems;
+    setNotificationItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === notification.id ? { ...item, isRead: read } : item,
+      ),
+    );
+
+    startTransition(async () => {
+      const response = await fetch(
+        `/api/owner/notifications/${notification.persistedId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ read }),
+        },
+      );
+
+      if (!response.ok) {
+        setNotificationItems(previousItems);
+      }
+    });
   }
 
   return (
@@ -175,11 +213,13 @@ export function OwnerNotificationsClient({
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <p className="text-muted text-xs font-bold">Priorité haute</p>
+            <p className="text-muted text-xs font-bold">Non lues</p>
             <TriangleAlert className="size-5 text-red-600" />
           </div>
-          <p className="mt-3 text-2xl font-black text-red-700">{totals.high}</p>
-          <p className="text-muted mt-1 text-xs">à traiter en premier</p>
+          <p className="mt-3 text-2xl font-black text-red-700">
+            {totals.unread}
+          </p>
+          <p className="text-muted mt-1 text-xs">notifications à traiter</p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
@@ -212,7 +252,7 @@ export function OwnerNotificationsClient({
       </section>
 
       <section className="rounded-3xl border border-[#e1e7e3] bg-white p-6 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-6">
+        <div className="grid gap-3 md:grid-cols-7">
           <label className="block text-xs font-bold md:col-span-2">
             Entreprise
             <select
@@ -274,6 +314,22 @@ export function OwnerNotificationsClient({
               <option value="expense_due">Échéance</option>
               <option value="expense_pending">À valider</option>
               <option value="expense_rejected">Rejetée</option>
+              <option value="system">Système</option>
+              <option value="other">Autre</option>
+            </select>
+          </label>
+          <label className="block text-xs font-bold">
+            Statut
+            <select
+              value={readFilter}
+              onChange={(event) =>
+                setReadFilter(event.target.value as "all" | "unread" | "read")
+              }
+              className="mt-2 h-12 w-full rounded-2xl border border-[#dbe4dd] bg-white px-4 text-sm outline-none focus:border-[#0b7a4b]"
+            >
+              <option value="all">Toutes</option>
+              <option value="unread">Non lues</option>
+              <option value="read">Lues</option>
             </select>
           </label>
           <button
@@ -307,6 +363,16 @@ export function OwnerNotificationsClient({
                   <span className="rounded-full bg-[#f3f7f4] px-3 py-1 text-[11px] font-black text-[#5c6f66]">
                     {typeLabels[notification.type]}
                   </span>
+                  <span
+                    className={cn(
+                      "rounded-full px-3 py-1 text-[11px] font-black",
+                      notification.isRead
+                        ? "bg-slate-100 text-slate-600"
+                        : "bg-blue-50 text-blue-700",
+                    )}
+                  >
+                    {notification.isRead ? "Lue" : "Non lue"}
+                  </span>
                   <span className="text-muted text-xs">
                     {formatDate(notification.occurredAt)}
                   </span>
@@ -322,12 +388,26 @@ export function OwnerNotificationsClient({
                   {formatMoney(notification.amount)}
                 </p>
               </div>
-              <Link
-                href={notification.actionHref}
-                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-[#0b7a4b] px-4 py-3 text-xs font-black text-white"
-              >
-                {notification.actionLabel}
-              </Link>
+              <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
+                {notification.canMarkRead ? (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() =>
+                      updateReadState(notification, !notification.isRead)
+                    }
+                    className="inline-flex items-center justify-center rounded-2xl border border-[#dbe4dd] px-4 py-3 text-xs font-black text-[#14251d] transition hover:bg-[#f3f7f4] disabled:opacity-60"
+                  >
+                    {notification.isRead ? "Marquer non lue" : "Marquer lue"}
+                  </button>
+                ) : null}
+                <Link
+                  href={notification.actionHref}
+                  className="inline-flex items-center justify-center rounded-2xl bg-[#0b7a4b] px-4 py-3 text-xs font-black text-white"
+                >
+                  {notification.actionLabel}
+                </Link>
+              </div>
             </div>
           </article>
         ))}
