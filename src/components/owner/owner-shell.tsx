@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  Bell,
   Building2,
   BookOpenCheck,
   Boxes,
@@ -28,6 +29,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 const navigation = [
   [LayoutDashboard, "Dashboard", "/owner/dashboard"],
+  [Bell, "Notifications", "/owner/notifications"],
   [Building2, "Entreprises", "/owner/businesses"],
   [Store, "Boutiques", "/owner/stores"],
   [Package, "Produits", "/owner/products"],
