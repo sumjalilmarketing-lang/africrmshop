@@ -5,9 +5,11 @@ import {
   CheckCircle2,
   Download,
   Filter,
+  RefreshCcw,
   TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { downloadCsvFile } from "@/lib/csv-export";
 import type {
@@ -91,6 +93,7 @@ export function OwnerNotificationsClient({
   stores: OwnerNotificationStore[];
   notifications: OwnerNotificationItem[];
 }>) {
+  const router = useRouter();
   const [notificationItems, setNotificationItems] = useState(notifications);
   const [businessId, setBusinessId] = useState(businesses[0]?.id ?? "");
   const [storeId, setStoreId] = useState("all");
@@ -101,6 +104,7 @@ export function OwnerNotificationsClient({
   const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">(
     "all",
   );
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const filteredStores = stores.filter(
@@ -208,6 +212,34 @@ export function OwnerNotificationsClient({
     });
   }
 
+  function syncComputedNotifications() {
+    setSyncMessage(null);
+
+    startTransition(async () => {
+      const response = await fetch("/api/owner/notifications/sync", {
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as {
+        synced?: number;
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        setSyncMessage(
+          body?.error ?? "La synchronisation des notifications a échoué.",
+        );
+        return;
+      }
+
+      setSyncMessage(
+        body?.synced
+          ? `${body.synced} notification(s) synchronisée(s).`
+          : "Aucune nouvelle notification à synchroniser.",
+      );
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -252,7 +284,7 @@ export function OwnerNotificationsClient({
       </section>
 
       <section className="rounded-3xl border border-[#e1e7e3] bg-white p-6 shadow-sm">
-        <div className="grid gap-3 md:grid-cols-7">
+        <div className="grid gap-3 md:grid-cols-8">
           <label className="block text-xs font-bold md:col-span-2">
             Entreprise
             <select
@@ -340,7 +372,19 @@ export function OwnerNotificationsClient({
             <Download className="size-4" />
             CSV
           </button>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={syncComputedNotifications}
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#0b7a4b] px-4 text-xs font-black text-white transition hover:bg-[#14251d] disabled:opacity-60"
+          >
+            <RefreshCcw className="size-4" />
+            Sync
+          </button>
         </div>
+        {syncMessage ? (
+          <p className="mt-3 text-xs font-bold text-[#0b7a4b]">{syncMessage}</p>
+        ) : null}
       </section>
 
       <section className="space-y-3">
