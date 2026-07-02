@@ -8,10 +8,12 @@ import {
   Download,
   ReceiptText,
   RefreshCcw,
+  ShieldCheck,
   WalletCards,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { downloadCsvFile } from "@/lib/csv-export";
+import { buildOwnerFinancialSummary } from "@/lib/owner-financial-summary";
 import type {
   FinancialReportPeriod,
   FinancialReportRow,
@@ -99,40 +101,9 @@ export function OwnerFinancialReportsClient({
   const selectedBusiness =
     businesses.find((business) => business.id === businessId)?.name ??
     "Toutes entreprises";
-  const totals = filteredRows.reduce(
-    (accumulator, row) => ({
-      completedSalesCount:
-        accumulator.completedSalesCount + row.completedSalesCount,
-      cancelledSalesCount:
-        accumulator.cancelledSalesCount + row.cancelledSalesCount,
-      refundedSalesCount:
-        accumulator.refundedSalesCount + row.refundedSalesCount,
-      grossSalesTotal: accumulator.grossSalesTotal + row.grossSalesTotal,
-      afterSaleTotal: accumulator.afterSaleTotal + row.afterSaleTotal,
-      netSalesTotal: accumulator.netSalesTotal + row.netSalesTotal,
-      taxCollectedTotal: accumulator.taxCollectedTotal + row.taxCollectedTotal,
-      taxReversedTotal: accumulator.taxReversedTotal + row.taxReversedTotal,
-      cashTotal: accumulator.cashTotal + row.cashTotal,
-      mobileMoneyTotal: accumulator.mobileMoneyTotal + row.mobileMoneyTotal,
-      refundedPaymentTotal:
-        accumulator.refundedPaymentTotal + row.refundedPaymentTotal,
-      cashDifferenceTotal:
-        accumulator.cashDifferenceTotal + row.cashDifferenceTotal,
-    }),
-    {
-      completedSalesCount: 0,
-      cancelledSalesCount: 0,
-      refundedSalesCount: 0,
-      grossSalesTotal: 0,
-      afterSaleTotal: 0,
-      netSalesTotal: 0,
-      taxCollectedTotal: 0,
-      taxReversedTotal: 0,
-      cashTotal: 0,
-      mobileMoneyTotal: 0,
-      refundedPaymentTotal: 0,
-      cashDifferenceTotal: 0,
-    },
+  const financialSummary = useMemo(
+    () => buildOwnerFinancialSummary(filteredRows),
+    [filteredRows],
   );
   const periodOptions = [...new Set(rows.map((row) => row.periodKey))].sort(
     (first, second) => second.localeCompare(first),
@@ -198,16 +169,35 @@ export function OwnerFinancialReportsClient({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">CA net</p>
             <BarChart3 className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totals.netSalesTotal)}
+            {formatMoney(financialSummary.netSalesTotal)}
           </p>
           <p className="text-muted mt-1 text-xs">après remboursements</p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Performance</p>
+            <ShieldCheck
+              className={cn(
+                "size-5",
+                financialSummary.afterSaleRate <= 5
+                  ? "text-[#0b7a4b]"
+                  : financialSummary.afterSaleRate <= 15
+                    ? "text-amber-600"
+                    : "text-red-700",
+              )}
+            />
+          </div>
+          <p className="mt-3 text-2xl font-black">
+            {financialSummary.afterSaleRate}%
+          </p>
+          <p className="text-muted mt-1 text-xs">taux après-vente</p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
@@ -215,10 +205,10 @@ export function OwnerFinancialReportsClient({
             <ReceiptText className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totals.taxCollectedTotal)}
+            {formatMoney(financialSummary.taxCollectedTotal)}
           </p>
           <p className="text-muted mt-1 text-xs">
-            {formatMoney(totals.taxReversedTotal)} à surveiller
+            {formatMoney(financialSummary.taxReversedTotal)} à surveiller
           </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -227,11 +217,13 @@ export function OwnerFinancialReportsClient({
             <WalletCards className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totals.cashTotal + totals.mobileMoneyTotal)}
+            {formatMoney(
+              financialSummary.cashTotal + financialSummary.mobileMoneyTotal,
+            )}
           </p>
           <p className="text-muted mt-1 text-xs">
-            cash {formatMoney(totals.cashTotal)} · mobile{" "}
-            {formatMoney(totals.mobileMoneyTotal)}
+            mobile {financialSummary.mobileMoneyShareRate}% · cash{" "}
+            {formatMoney(financialSummary.cashTotal)}
           </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -242,16 +234,18 @@ export function OwnerFinancialReportsClient({
           <p
             className={cn(
               "mt-3 text-2xl font-black",
-              totals.cashDifferenceTotal === 0
+              financialSummary.cashDifferenceTotal === 0
                 ? "text-[#14251d]"
-                : totals.cashDifferenceTotal > 0
+                : financialSummary.cashDifferenceTotal > 0
                   ? "text-amber-700"
                   : "text-red-700",
             )}
           >
-            {formatMoney(totals.cashDifferenceTotal)}
+            {formatMoney(financialSummary.cashDifferenceTotal)}
           </p>
-          <p className="text-muted mt-1 text-xs">sessions fermées</p>
+          <p className="text-muted mt-1 text-xs">
+            {financialSummary.cashDifferenceRate}% du cash
+          </p>
         </article>
       </section>
 
@@ -342,12 +336,12 @@ export function OwnerFinancialReportsClient({
           </div>
           <div className="mt-5 space-y-3 text-sm">
             {[
-              ["CA brut", totals.grossSalesTotal],
-              ["Annulations / remboursements", totals.afterSaleTotal],
-              ["CA net", totals.netSalesTotal],
-              ["TVA collectée", totals.taxCollectedTotal],
-              ["TVA annulée/remboursée", totals.taxReversedTotal],
-              ["Paiements remboursés", totals.refundedPaymentTotal],
+              ["CA brut", financialSummary.grossSalesTotal],
+              ["Annulations / remboursements", financialSummary.afterSaleTotal],
+              ["CA net", financialSummary.netSalesTotal],
+              ["TVA collectée", financialSummary.taxCollectedTotal],
+              ["TVA annulée/remboursée", financialSummary.taxReversedTotal],
+              ["Paiements remboursés", financialSummary.refundedPaymentTotal],
             ].map(([label, value]) => (
               <div
                 key={label as string}
