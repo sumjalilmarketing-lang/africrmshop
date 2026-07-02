@@ -6,6 +6,7 @@ import {
   MessageSquarePlus,
   Phone,
   Search,
+  ShieldCheck,
   ShoppingBag,
   Sparkles,
   UserRound,
@@ -13,6 +14,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { buildOwnerCustomersSummary } from "@/lib/owner-customers-summary";
 import { cn } from "@/lib/utils";
 
 export type OwnerCustomerBusiness = {
@@ -151,20 +153,10 @@ export function OwnerCustomersClient({
   const businessCustomers = customers.filter(
     (customer) => !businessId || customer.businessId === businessId,
   );
-  const totalSpent = businessCustomers.reduce(
-    (total, customer) => total + customer.totalSpent,
-    0,
+  const customersSummary = useMemo(
+    () => buildOwnerCustomersSummary(businessCustomers, referenceTime),
+    [businessCustomers, referenceTime],
   );
-  const vipCount = businessCustomers.filter(
-    (customer) => customer.totalSpent >= 50_000,
-  ).length;
-  const activeCount = businessCustomers.filter((customer) => {
-    if (!customer.lastSaleAt) return false;
-    return (
-      referenceTime - new Date(customer.lastSaleAt).getTime() <=
-      30 * 24 * 60 * 60 * 1000
-    );
-  }).length;
 
   function changeBusiness(nextBusinessId: string) {
     setBusinessId(nextBusinessId);
@@ -213,14 +205,17 @@ export function OwnerCustomersClient({
   return (
     <div className="grid gap-6 xl:grid-cols-[430px_1fr]">
       <section className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-1">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
           <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
               <p className="text-muted text-xs font-bold">Clients</p>
               <UserRound className="size-5 text-[#0b7a4b]" />
             </div>
             <p className="mt-3 text-3xl font-black">
-              {businessCustomers.length}
+              {customersSummary.customerCount}
+            </p>
+            <p className="text-muted mt-1 text-xs">
+              {customersSummary.inactiveCount} inactif(s) à relancer
             </p>
           </article>
           <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -228,7 +223,12 @@ export function OwnerCustomersClient({
               <p className="text-muted text-xs font-bold">CA client</p>
               <WalletCards className="size-5 text-[#0b7a4b]" />
             </div>
-            <p className="mt-3 text-2xl font-black">{toMoney(totalSpent)}</p>
+            <p className="mt-3 text-2xl font-black">
+              {toMoney(customersSummary.totalSpent)}
+            </p>
+            <p className="text-muted mt-1 text-xs">
+              panier moyen {toMoney(customersSummary.averageBasket)}
+            </p>
           </article>
           <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between">
@@ -236,7 +236,31 @@ export function OwnerCustomersClient({
               <Sparkles className="size-5 text-amber-600" />
             </div>
             <p className="mt-3 text-2xl font-black">
-              {vipCount} / {activeCount}
+              {customersSummary.vipCount} / {customersSummary.activeCount}
+            </p>
+            <p className="text-muted mt-1 text-xs">
+              revenu moyen {toMoney(customersSummary.averageRevenuePerCustomer)}
+            </p>
+          </article>
+          <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-muted text-xs font-bold">Qualité contacts</p>
+              <ShieldCheck
+                className={cn(
+                  "size-5",
+                  customersSummary.contactQualityRate >= 80
+                    ? "text-[#0b7a4b]"
+                    : customersSummary.contactQualityRate >= 50
+                      ? "text-amber-600"
+                      : "text-red-700",
+                )}
+              />
+            </div>
+            <p className="mt-3 text-2xl font-black">
+              {customersSummary.contactQualityRate}%
+            </p>
+            <p className="text-muted mt-1 text-xs">
+              {customersSummary.incompleteContactCount} fiche(s) sans contact
             </p>
           </article>
         </div>
