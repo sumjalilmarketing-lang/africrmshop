@@ -1,6 +1,7 @@
 import "server-only";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { buildSuperAdminPlatformSummary } from "@/lib/super-admin-platform-summary";
 import type {
   DashboardBusiness,
   SuperAdminDashboardData,
@@ -87,6 +88,16 @@ export async function getSuperAdminDashboardData(): Promise<SuperAdminDashboardD
     (total, payment) => total + Number(payment.amount ?? 0),
     0,
   );
+  const platformSummary = buildSuperAdminPlatformSummary({
+    businesses: (businessesResult.data ?? []).map((business) => ({
+      status: business.status,
+    })),
+    users: users.map((user) => ({ status: user.status })),
+    financials: {
+      monthlyRevenue,
+      collectedVolume,
+    },
+  });
 
   const businesses = (businessesResult.data ?? []).map((business, index) => {
     const metadata = (business.metadata ?? {}) as Record<string, unknown>;
@@ -127,6 +138,10 @@ export async function getSuperAdminDashboardData(): Promise<SuperAdminDashboardD
       activeUsers: users.filter((user) => user.status === "active").length,
       monthlyRevenue: formatMoney(monthlyRevenue),
       collectedVolume: formatMoney(collectedVolume),
+      trialBusinesses: platformSummary.trialBusinessCount,
+      suspendedBusinesses: platformSummary.suspendedBusinessCount,
+      collectionRate: platformSummary.collectionRate,
+      platformHealthScore: platformSummary.healthScore,
     },
     businesses,
   };

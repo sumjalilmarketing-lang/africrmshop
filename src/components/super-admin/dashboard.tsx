@@ -79,6 +79,14 @@ const demoMetrics = [
     trend: "down",
     color: "bg-[#f3eafb] text-[#8051a8]",
   },
+  {
+    icon: Gauge,
+    label: "Santé plateforme",
+    value: "94 %",
+    change: "Stable",
+    trend: "up",
+    color: "bg-[#e9f5ee] text-brand",
+  },
 ] as const;
 
 const demoCompanies = [
@@ -330,6 +338,14 @@ export function SuperAdminDashboard({
           trend: "up",
           color: "bg-[#f3eafb] text-[#8051a8]",
         },
+        {
+          icon: Gauge,
+          label: "Santé plateforme",
+          value: `${data.stats.platformHealthScore} %`,
+          change: `${data.stats.collectionRate} % collecté`,
+          trend: "up",
+          color: "bg-[#e9f5ee] text-brand",
+        },
       ]
     : demoMetrics;
 
@@ -439,7 +455,7 @@ export function SuperAdminDashboard({
               </div>
             </div>
 
-            <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               {metrics.map((metric) => {
                 const Icon = metric.icon;
                 const TrendIcon =
@@ -776,9 +792,30 @@ export function SuperAdminDashboard({
               className="mt-4 grid scroll-mt-24 gap-4 md:grid-cols-3"
             >
               {[
-                [Server, "API & application", "Opérationnel", "99,99 %"],
-                [Database, "Base de données", "Opérationnel", "42 ms"],
-                [Zap, "Tâches en arrière-plan", "Opérationnel", "0 en attente"],
+                [
+                  Server,
+                  "API & application",
+                  "Opérationnel",
+                  data
+                    ? `${data.stats.platformHealthScore} % santé`
+                    : "99,99 %",
+                ],
+                [
+                  Database,
+                  "Base de données",
+                  "Opérationnel",
+                  data
+                    ? `${data.stats.suspendedBusinesses} suspendue(s)`
+                    : "42 ms",
+                ],
+                [
+                  Zap,
+                  "Tâches en arrière-plan",
+                  "Opérationnel",
+                  data
+                    ? `${data.stats.trialBusinesses} essai(s)`
+                    : "0 en attente",
+                ],
               ].map(([Icon, title, state, detail]) => {
                 const StatusIcon = Icon as typeof Server;
                 return (

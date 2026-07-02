@@ -17,6 +17,10 @@ export type SuperAdminDashboardData = {
     activeUsers: number;
     monthlyRevenue: string;
     collectedVolume: string;
+    trialBusinesses: number;
+    suspendedBusinesses: number;
+    collectionRate: number;
+    platformHealthScore: number;
   };
   businesses: DashboardBusiness[];
 };
