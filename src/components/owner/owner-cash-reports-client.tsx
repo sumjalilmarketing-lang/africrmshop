@@ -9,11 +9,13 @@ import {
   Printer,
   ReceiptText,
   Search,
+  ShieldCheck,
   Store,
   WalletCards,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { downloadCsvFile } from "@/lib/csv-export";
+import { buildOwnerCashControlSummary } from "@/lib/owner-cash-control";
 import { cn } from "@/lib/utils";
 import type { CashSessionReport } from "@/lib/pos-cash-reports";
 
@@ -107,20 +109,9 @@ export function OwnerCashReportsClient({
     filteredReports.find((report) => report.id === selectedReportId) ??
     filteredReports[0] ??
     null;
-  const totalCash = filteredReports.reduce(
-    (total, report) => total + report.cashSalesTotal,
-    0,
-  );
-  const totalMobileMoney = filteredReports.reduce(
-    (total, report) => total + report.mobileMoneyTotal,
-    0,
-  );
-  const totalDifferences = filteredReports.reduce(
-    (total, report) => total + report.differenceAmount,
-    0,
-  );
-  const sessionsWithGap = filteredReports.filter(
-    (report) => report.differenceAmount !== 0,
+  const cashControlSummary = useMemo(
+    () => buildOwnerCashControlSummary(filteredReports),
+    [filteredReports],
   );
 
   function changeBusiness(nextBusinessId: string) {
@@ -187,21 +178,46 @@ export function OwnerCashReportsClient({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Rapports Z</p>
             <ClipboardList className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-3xl font-black">{filteredReports.length}</p>
+          <p className="mt-3 text-3xl font-black">
+            {cashControlSummary.reportCount}
+          </p>
           <p className="text-muted mt-1 text-xs">sessions clôturées</p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Contrôle caisse</p>
+            <ShieldCheck
+              className={cn(
+                "size-5",
+                cashControlSummary.severity === "balanced"
+                  ? "text-[#0b7a4b]"
+                  : cashControlSummary.severity === "watch"
+                    ? "text-amber-600"
+                    : "text-red-700",
+              )}
+            />
+          </div>
+          <p className="mt-3 text-2xl font-black">
+            {cashControlSummary.reconciliationRate}%
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            {cashControlSummary.balancedReportCount} session(s) équilibrée(s)
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Cash encaissé</p>
             <Banknote className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-2xl font-black">{formatMoney(totalCash)}</p>
+          <p className="mt-3 text-2xl font-black">
+            {formatMoney(cashControlSummary.totalCashSales)}
+          </p>
           <p className="text-muted mt-1 text-xs">ventes espèces</p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -210,7 +226,7 @@ export function OwnerCashReportsClient({
             <WalletCards className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totalMobileMoney)}
+            {formatMoney(cashControlSummary.totalMobileMoney)}
           </p>
           <p className="text-muted mt-1 text-xs">hors espèces</p>
         </article>
@@ -222,17 +238,18 @@ export function OwnerCashReportsClient({
           <p
             className={cn(
               "mt-3 text-2xl font-black",
-              totalDifferences === 0
+              cashControlSummary.netDifferenceAmount === 0
                 ? "text-[#14251d]"
-                : totalDifferences > 0
+                : cashControlSummary.netDifferenceAmount > 0
                   ? "text-amber-700"
                   : "text-red-700",
             )}
           >
-            {formatMoney(totalDifferences)}
+            {formatMoney(cashControlSummary.netDifferenceAmount)}
           </p>
           <p className="text-muted mt-1 text-xs">
-            {sessionsWithGap.length} session(s) à vérifier
+            {cashControlSummary.gapReportCount} session(s) à vérifier ·{" "}
+            {formatMoney(cashControlSummary.absoluteDifferenceAmount)} absolu
           </p>
         </article>
       </section>
