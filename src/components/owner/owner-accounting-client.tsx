@@ -8,11 +8,13 @@ import {
   Download,
   ReceiptText,
   Search,
+  ShieldCheck,
   WalletCards,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { downloadCsvFile } from "@/lib/csv-export";
 import type { AssistedAccountingEntry } from "@/lib/assisted-accounting";
+import { buildOwnerAccountingSummary } from "@/lib/owner-accounting-summary";
 import { cn } from "@/lib/utils";
 
 export type OwnerAccountingBusiness = {
@@ -111,25 +113,9 @@ export function OwnerAccountingClient({
     filteredEntries.find((entry) => entry.id === selectedEntryId) ??
     filteredEntries[0] ??
     null;
-  const totalDebit = filteredEntries.reduce(
-    (total, entry) => total + entry.totalDebit,
-    0,
-  );
-  const totalCredit = filteredEntries.reduce(
-    (total, entry) => total + entry.totalCredit,
-    0,
-  );
-  const unbalancedEntries = filteredEntries.filter(
-    (entry) => !entry.isBalanced,
-  );
-  const saleEntries = filteredEntries.filter(
-    (entry) => entry.sourceType === "sale",
-  );
-  const afterSaleEntries = filteredEntries.filter(
-    (entry) => entry.sourceType === "refund",
-  );
-  const expenseEntries = filteredEntries.filter(
-    (entry) => entry.sourceType === "expense",
+  const accountingSummary = useMemo(
+    () => buildOwnerAccountingSummary(filteredEntries),
+    [filteredEntries],
   );
 
   function changeBusiness(nextBusinessId: string) {
@@ -185,21 +171,44 @@ export function OwnerAccountingClient({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Écritures</p>
             <BookOpenCheck className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-3xl font-black">{filteredEntries.length}</p>
+          <p className="mt-3 text-3xl font-black">
+            {accountingSummary.entryCount}
+          </p>
           <p className="text-muted mt-1 text-xs">brouillons assistés</p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Équilibre</p>
+            <ShieldCheck
+              className={cn(
+                "size-5",
+                accountingSummary.unbalancedEntryCount === 0
+                  ? "text-[#0b7a4b]"
+                  : "text-amber-600",
+              )}
+            />
+          </div>
+          <p className="mt-3 text-2xl font-black">
+            {accountingSummary.balancedRate}%
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            écart {formatMoney(accountingSummary.balanceGapAmount)}
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Débit</p>
             <Calculator className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-2xl font-black">{formatMoney(totalDebit)}</p>
+          <p className="mt-3 text-2xl font-black">
+            {formatMoney(accountingSummary.totalDebit)}
+          </p>
           <p className="text-muted mt-1 text-xs">total journal filtré</p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -207,13 +216,15 @@ export function OwnerAccountingClient({
             <p className="text-muted text-xs font-bold">Crédit</p>
             <WalletCards className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-2xl font-black">{formatMoney(totalCredit)}</p>
+          <p className="mt-3 text-2xl font-black">
+            {formatMoney(accountingSummary.totalCredit)}
+          </p>
           <p className="text-muted mt-1 text-xs">total journal filtré</p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Contrôle</p>
-            {unbalancedEntries.length === 0 ? (
+            {accountingSummary.unbalancedEntryCount === 0 ? (
               <CheckCircle2 className="size-5 text-[#0b7a4b]" />
             ) : (
               <AlertTriangle className="size-5 text-amber-600" />
@@ -222,12 +233,12 @@ export function OwnerAccountingClient({
           <p
             className={cn(
               "mt-3 text-2xl font-black",
-              unbalancedEntries.length === 0
+              accountingSummary.unbalancedEntryCount === 0
                 ? "text-[#14251d]"
                 : "text-amber-700",
             )}
           >
-            {unbalancedEntries.length}
+            {accountingSummary.unbalancedEntryCount}
           </p>
           <p className="text-muted mt-1 text-xs">
             écriture(s) déséquilibrée(s)
@@ -491,15 +502,21 @@ export function OwnerAccountingClient({
       <section className="grid gap-4 md:grid-cols-3">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <p className="text-muted text-xs font-bold">Ventes</p>
-          <p className="mt-2 text-2xl font-black">{saleEntries.length}</p>
+          <p className="mt-2 text-2xl font-black">
+            {accountingSummary.saleEntryCount}
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <p className="text-muted text-xs font-bold">Après-vente</p>
-          <p className="mt-2 text-2xl font-black">{afterSaleEntries.length}</p>
+          <p className="mt-2 text-2xl font-black">
+            {accountingSummary.refundEntryCount}
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <p className="text-muted text-xs font-bold">Dépenses</p>
-          <p className="mt-2 text-2xl font-black">{expenseEntries.length}</p>
+          <p className="mt-2 text-2xl font-black">
+            {accountingSummary.expenseEntryCount}
+          </p>
         </article>
       </section>
     </div>
