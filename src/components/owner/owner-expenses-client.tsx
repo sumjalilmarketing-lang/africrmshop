@@ -10,9 +10,11 @@ import {
   Plus,
   ReceiptText,
   Search,
+  ShieldCheck,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { downloadCsvFile } from "@/lib/csv-export";
+import { buildOwnerExpensesSummary } from "@/lib/owner-expenses-summary";
 import { cn } from "@/lib/utils";
 
 export type OwnerExpenseBusiness = {
@@ -205,20 +207,10 @@ export function OwnerExpensesClient({
   const selectedExpenseDocuments = selectedExpense
     ? documents.filter((document) => document.expenseId === selectedExpense.id)
     : [];
-  const totalExpenses = filteredExpenses.reduce(
-    (total, expense) => total + expense.totalAmount,
-    0,
+  const expensesSummary = useMemo(
+    () => buildOwnerExpensesSummary(filteredExpenses),
+    [filteredExpenses],
   );
-  const totalTax = filteredExpenses.reduce(
-    (total, expense) => total + expense.taxAmount,
-    0,
-  );
-  const pendingCount = filteredExpenses.filter(
-    (expense) => expense.status === "pending",
-  ).length;
-  const paidCount = filteredExpenses.filter(
-    (expense) => expense.status === "paid",
-  ).length;
   const formTotal =
     Number(form.amountExcludingTax || 0) + Number(form.taxAmount || 0);
 
@@ -402,17 +394,38 @@ export function OwnerExpensesClient({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Dépenses</p>
             <ReceiptText className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totalExpenses)}
+            {formatMoney(expensesSummary.totalExpenses)}
           </p>
           <p className="text-muted mt-1 text-xs">
-            {filteredExpenses.length} ligne(s)
+            {expensesSummary.expenseCount} ligne(s)
+          </p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Conformité</p>
+            <ShieldCheck
+              className={cn(
+                "size-5",
+                expensesSummary.documentComplianceRate >= 80
+                  ? "text-[#0b7a4b]"
+                  : expensesSummary.documentComplianceRate >= 50
+                    ? "text-amber-600"
+                    : "text-red-700",
+              )}
+            />
+          </div>
+          <p className="mt-3 text-2xl font-black">
+            {expensesSummary.documentComplianceRate}%
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            {expensesSummary.missingDocumentCount} sans justificatif
           </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -420,7 +433,9 @@ export function OwnerExpensesClient({
             <p className="text-muted text-xs font-bold">TVA</p>
             <FileText className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-2xl font-black">{formatMoney(totalTax)}</p>
+          <p className="mt-3 text-2xl font-black">
+            {formatMoney(expensesSummary.totalTax)}
+          </p>
           <p className="text-muted mt-1 text-xs">potentiellement récupérable</p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -428,16 +443,24 @@ export function OwnerExpensesClient({
             <p className="text-muted text-xs font-bold">À valider</p>
             <Clock3 className="size-5 text-amber-600" />
           </div>
-          <p className="mt-3 text-3xl font-black">{pendingCount}</p>
-          <p className="text-muted mt-1 text-xs">dépense(s)</p>
+          <p className="mt-3 text-3xl font-black">
+            {expensesSummary.pendingCount}
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            {expensesSummary.draftCount} brouillon(s)
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Payées</p>
             <CheckCircle2 className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-3xl font-black">{paidCount}</p>
-          <p className="text-muted mt-1 text-xs">dépense(s)</p>
+          <p className="mt-3 text-3xl font-black">
+            {expensesSummary.paidCount}
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            contrôle {expensesSummary.approvalRate}%
+          </p>
         </article>
       </section>
 
