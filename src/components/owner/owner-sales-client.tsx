@@ -10,11 +10,13 @@ import {
   ReceiptText,
   RotateCcw,
   Search,
+  ShieldCheck,
   Store,
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { downloadCsvFile } from "@/lib/csv-export";
+import { buildOwnerSalesSummary } from "@/lib/owner-sales-summary";
 import { cn } from "@/lib/utils";
 
 export type OwnerSaleBusiness = {
@@ -162,22 +164,10 @@ export function OwnerSalesClient({
     filteredSales.find((sale) => sale.id === selectedSaleId) ??
     filteredSales[0] ??
     null;
-  const completedSales = filteredSales.filter(
-    (sale) => sale.status === "completed",
+  const salesSummary = useMemo(
+    () => buildOwnerSalesSummary(filteredSales),
+    [filteredSales],
   );
-  const afterSales = filteredSales.filter((sale) =>
-    ["cancelled", "refunded"].includes(sale.status),
-  );
-  const completedTotal = completedSales.reduce(
-    (total, sale) => total + sale.totalAmount,
-    0,
-  );
-  const afterSaleTotal = afterSales.reduce(
-    (total, sale) => total + sale.totalAmount,
-    0,
-  );
-  const averageBasket =
-    completedSales.length > 0 ? completedTotal / completedSales.length : 0;
 
   function changeBusiness(nextBusinessId: string) {
     setBusinessId(nextBusinessId);
@@ -244,14 +234,14 @@ export function OwnerSalesClient({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">CA encaissé</p>
             <Banknote className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(completedTotal)}
+            {formatMoney(salesSummary.completedTotal)}
           </p>
           <p className="text-muted mt-1 text-xs">ventes finalisées</p>
         </article>
@@ -260,8 +250,30 @@ export function OwnerSalesClient({
             <p className="text-muted text-xs font-bold">Tickets encaissés</p>
             <ReceiptText className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-3xl font-black">{completedSales.length}</p>
+          <p className="mt-3 text-3xl font-black">
+            {salesSummary.completedCount}
+          </p>
           <p className="text-muted mt-1 text-xs">sur la période filtrée</p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Contrôle paiements</p>
+            <ShieldCheck
+              className={cn(
+                "size-5",
+                salesSummary.paymentGapCount === 0
+                  ? "text-[#0b7a4b]"
+                  : "text-amber-600",
+              )}
+            />
+          </div>
+          <p className="mt-3 text-2xl font-black">
+            {salesSummary.paymentControlRate}%
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            {salesSummary.paymentGapCount} ticket(s) ·{" "}
+            {formatMoney(salesSummary.paymentGapAmount)}
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
@@ -269,10 +281,11 @@ export function OwnerSalesClient({
             <RotateCcw className="size-5 text-red-600" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(afterSaleTotal)}
+            {formatMoney(salesSummary.afterSaleTotal)}
           </p>
           <p className="text-muted mt-1 text-xs">
-            {afterSales.length} annulation(s) / remboursement(s)
+            {salesSummary.cancelledCount} annulation(s) /{" "}
+            {salesSummary.refundedCount} remboursement(s)
           </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -281,9 +294,11 @@ export function OwnerSalesClient({
             <CreditCard className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(averageBasket)}
+            {formatMoney(salesSummary.averageBasket)}
           </p>
-          <p className="text-muted mt-1 text-xs">hors ventes traitées</p>
+          <p className="text-muted mt-1 text-xs">
+            TVA {formatMoney(salesSummary.taxTotal)}
+          </p>
         </article>
       </section>
 
