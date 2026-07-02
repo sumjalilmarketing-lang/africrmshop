@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { downloadCsvFile } from "@/lib/csv-export";
+import { buildOwnerTaxSummary } from "@/lib/owner-tax-summary";
 import type { TaxReportPeriod, TaxReportRow } from "@/lib/owner-tax-reports";
 import { cn } from "@/lib/utils";
 
@@ -97,33 +98,9 @@ export function OwnerTaxReportsClient({
   const selectedBusiness =
     businesses.find((business) => business.id === businessId)?.name ??
     "Toutes entreprises";
-  const totals = filteredRows.reduce(
-    (accumulator, row) => ({
-      completedSalesCount:
-        accumulator.completedSalesCount + row.completedSalesCount,
-      afterSaleCount: accumulator.afterSaleCount + row.afterSaleCount,
-      deductibleExpenseCount:
-        accumulator.deductibleExpenseCount + row.deductibleExpenseCount,
-      taxableSalesTotal: accumulator.taxableSalesTotal + row.taxableSalesTotal,
-      outputTaxTotal: accumulator.outputTaxTotal + row.outputTaxTotal,
-      reversedOutputTaxTotal:
-        accumulator.reversedOutputTaxTotal + row.reversedOutputTaxTotal,
-      deductibleExpenseTotal:
-        accumulator.deductibleExpenseTotal + row.deductibleExpenseTotal,
-      inputTaxTotal: accumulator.inputTaxTotal + row.inputTaxTotal,
-      netTaxDue: accumulator.netTaxDue + row.netTaxDue,
-    }),
-    {
-      completedSalesCount: 0,
-      afterSaleCount: 0,
-      deductibleExpenseCount: 0,
-      taxableSalesTotal: 0,
-      outputTaxTotal: 0,
-      reversedOutputTaxTotal: 0,
-      deductibleExpenseTotal: 0,
-      inputTaxTotal: 0,
-      netTaxDue: 0,
-    },
+  const taxSummary = useMemo(
+    () => buildOwnerTaxSummary(filteredRows),
+    [filteredRows],
   );
   const periodOptions = [...new Set(rows.map((row) => row.periodKey))].sort(
     (first, second) => second.localeCompare(first),
@@ -183,17 +160,37 @@ export function OwnerTaxReportsClient({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">TVA collectée nette</p>
             <ReceiptText className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totals.outputTaxTotal - totals.reversedOutputTaxTotal)}
+            {formatMoney(taxSummary.netCollectedTax)}
           </p>
           <p className="text-muted mt-1 text-xs">
-            {formatMoney(totals.reversedOutputTaxTotal)} annulée/remboursée
+            {formatMoney(taxSummary.reversedOutputTaxTotal)} annulée/remboursée
+          </p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Taux effectif</p>
+            <ShieldCheck
+              className={cn(
+                "size-5",
+                taxSummary.effectiveTaxRate >= 15 &&
+                  taxSummary.effectiveTaxRate <= 20
+                  ? "text-[#0b7a4b]"
+                  : "text-amber-600",
+              )}
+            />
+          </div>
+          <p className="mt-3 text-2xl font-black">
+            {taxSummary.effectiveTaxRate}%
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            couverture déductible {taxSummary.deductibleCoverageRate}%
           </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -202,10 +199,10 @@ export function OwnerTaxReportsClient({
             <ShieldCheck className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totals.inputTaxTotal)}
+            {formatMoney(taxSummary.inputTaxTotal)}
           </p>
           <p className="text-muted mt-1 text-xs">
-            {totals.deductibleExpenseCount} dépenses validées/payées
+            {taxSummary.deductibleExpenseCount} dépenses validées/payées
           </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -216,10 +213,10 @@ export function OwnerTaxReportsClient({
           <p
             className={cn(
               "mt-3 text-2xl font-black",
-              totals.netTaxDue < 0 ? "text-[#0b7a4b]" : "text-[#14251d]",
+              taxSummary.netTaxDue < 0 ? "text-[#0b7a4b]" : "text-[#14251d]",
             )}
           >
-            {formatMoney(totals.netTaxDue)}
+            {formatMoney(taxSummary.netTaxDue)}
           </p>
           <p className="text-muted mt-1 text-xs">
             à contrôler avant déclaration
@@ -231,10 +228,10 @@ export function OwnerTaxReportsClient({
             <CalendarDays className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totals.taxableSalesTotal)}
+            {formatMoney(taxSummary.taxableSalesTotal)}
           </p>
           <p className="text-muted mt-1 text-xs">
-            {totals.completedSalesCount} tickets encaissés
+            {taxSummary.completedSalesCount} tickets encaissés
           </p>
         </article>
       </section>
