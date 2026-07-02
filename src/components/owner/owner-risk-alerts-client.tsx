@@ -15,6 +15,7 @@ import type {
   RiskAlertType,
   RiskSeverity,
 } from "@/lib/owner-risk-alerts";
+import { buildOwnerRiskSummary } from "@/lib/owner-risk-summary";
 import { cn } from "@/lib/utils";
 
 export type OwnerRiskBusiness = {
@@ -112,16 +113,9 @@ export function OwnerRiskAlertsClient({
   const selectedBusiness =
     businesses.find((business) => business.id === businessId)?.name ??
     "Toutes entreprises";
-  const totals = filteredAlerts.reduce(
-    (accumulator, alert) => ({
-      high: accumulator.high + (alert.severity === "high" ? 1 : 0),
-      medium: accumulator.medium + (alert.severity === "medium" ? 1 : 0),
-      low: accumulator.low + (alert.severity === "low" ? 1 : 0),
-      cashDifference:
-        accumulator.cashDifference +
-        (alert.type === "cash_difference" ? Math.abs(alert.amount ?? 0) : 0),
-    }),
-    { high: 0, medium: 0, low: 0, cashDifference: 0 },
+  const riskSummary = useMemo(
+    () => buildOwnerRiskSummary(filteredAlerts),
+    [filteredAlerts],
   );
 
   function changeBusiness(nextBusinessId: string) {
@@ -165,14 +159,28 @@ export function OwnerRiskAlertsClient({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Alertes élevées</p>
             <ShieldAlert className="size-5 text-red-600" />
           </div>
-          <p className="mt-3 text-2xl font-black text-red-700">{totals.high}</p>
+          <p className="mt-3 text-2xl font-black text-red-700">
+            {riskSummary.highCount}
+          </p>
           <p className="text-muted mt-1 text-xs">à contrôler en priorité</p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Risque critique</p>
+            <ShieldAlert className="size-5 text-red-600" />
+          </div>
+          <p className="mt-3 text-2xl font-black text-red-700">
+            {riskSummary.criticalRate}%
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            exposition {formatMoney(riskSummary.monetaryRiskAmount)}
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
@@ -180,7 +188,7 @@ export function OwnerRiskAlertsClient({
             <AlertTriangle className="size-5 text-amber-600" />
           </div>
           <p className="mt-3 text-2xl font-black text-amber-700">
-            {totals.medium}
+            {riskSummary.mediumCount}
           </p>
           <p className="text-muted mt-1 text-xs">risques à suivre</p>
         </article>
@@ -190,7 +198,7 @@ export function OwnerRiskAlertsClient({
             <Eye className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totals.cashDifference)}
+            {formatMoney(riskSummary.cashDifferenceAmount)}
           </p>
           <p className="text-muted mt-1 text-xs">valeur absolue détectée</p>
         </article>
@@ -199,7 +207,7 @@ export function OwnerRiskAlertsClient({
             <p className="text-muted text-xs font-bold">Contrôles faibles</p>
             <ShieldCheck className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-2xl font-black">{totals.low}</p>
+          <p className="mt-3 text-2xl font-black">{riskSummary.lowCount}</p>
           <p className="text-muted mt-1 text-xs">signaux non critiques</p>
         </article>
       </section>
