@@ -17,6 +17,7 @@ import type {
   OwnerNotificationPriority,
   OwnerNotificationType,
 } from "@/lib/owner-notifications";
+import { buildOwnerNotificationsSummary } from "@/lib/owner-notifications-summary";
 import { cn } from "@/lib/utils";
 
 export type OwnerNotificationBusiness = {
@@ -136,15 +137,9 @@ export function OwnerNotificationsClient({
   const selectedBusiness =
     businesses.find((business) => business.id === businessId)?.name ??
     "Toutes entreprises";
-  const totals = filteredNotifications.reduce(
-    (accumulator, notification) => ({
-      high: accumulator.high + (notification.priority === "high" ? 1 : 0),
-      medium: accumulator.medium + (notification.priority === "medium" ? 1 : 0),
-      low: accumulator.low + (notification.priority === "low" ? 1 : 0),
-      amount: accumulator.amount + Math.abs(notification.amount ?? 0),
-      unread: accumulator.unread + (!notification.isRead ? 1 : 0),
-    }),
-    { high: 0, medium: 0, low: 0, amount: 0, unread: 0 },
+  const notificationSummary = useMemo(
+    () => buildOwnerNotificationsSummary(filteredNotifications),
+    [filteredNotifications],
   );
 
   function changeBusiness(nextBusinessId: string) {
@@ -242,16 +237,28 @@ export function OwnerNotificationsClient({
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Non lues</p>
             <TriangleAlert className="size-5 text-red-600" />
           </div>
           <p className="mt-3 text-2xl font-black text-red-700">
-            {totals.unread}
+            {notificationSummary.unreadCount}
           </p>
           <p className="text-muted mt-1 text-xs">notifications à traiter</p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Priorité haute</p>
+            <TriangleAlert className="size-5 text-red-600" />
+          </div>
+          <p className="mt-3 text-2xl font-black text-red-700">
+            {notificationSummary.highCount}
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            {notificationSummary.actionRequiredCount} action(s) urgente(s)
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
@@ -259,7 +266,7 @@ export function OwnerNotificationsClient({
             <Bell className="size-5 text-amber-600" />
           </div>
           <p className="mt-3 text-2xl font-black text-amber-700">
-            {totals.medium}
+            {notificationSummary.mediumCount}
           </p>
           <p className="text-muted mt-1 text-xs">à suivre aujourd’hui</p>
         </article>
@@ -269,7 +276,7 @@ export function OwnerNotificationsClient({
             <Filter className="size-5 text-[#0b7a4b]" />
           </div>
           <p className="mt-3 text-2xl font-black">
-            {formatMoney(totals.amount)}
+            {formatMoney(notificationSummary.exposedAmount)}
           </p>
           <p className="text-muted mt-1 text-xs">valeur indicative</p>
         </article>
@@ -278,8 +285,12 @@ export function OwnerNotificationsClient({
             <p className="text-muted text-xs font-bold">Signal faible</p>
             <CheckCircle2 className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-2xl font-black">{totals.low}</p>
-          <p className="text-muted mt-1 text-xs">non critique</p>
+          <p className="mt-3 text-2xl font-black">
+            {notificationSummary.lowCount}
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            {notificationSummary.treatmentRate}% traité
+          </p>
         </article>
       </section>
 
