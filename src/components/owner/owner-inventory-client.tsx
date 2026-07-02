@@ -6,10 +6,12 @@ import {
   CheckCircle2,
   PackageSearch,
   Search,
+  ShieldCheck,
   TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { buildOwnerInventorySummary } from "@/lib/owner-inventory-summary";
 import { cn } from "@/lib/utils";
 
 export type OwnerInventoryBusiness = {
@@ -91,17 +93,9 @@ export function OwnerInventoryClient({
     });
   }, [businessId, rows, search, status, storeId]);
 
-  const totalAvailableStock = filteredRows.reduce(
-    (total, row) => total + row.availableStock,
-    0,
-  );
-  const costValuation = filteredRows.reduce(
-    (total, row) => total + row.availableStock * row.costPrice,
-    0,
-  );
-  const saleValuation = filteredRows.reduce(
-    (total, row) => total + row.availableStock * row.sellingPrice,
-    0,
+  const inventorySummary = useMemo(
+    () => buildOwnerInventorySummary(filteredRows),
+    [filteredRows],
   );
   const lowStockRows = filteredRows.filter(
     (row) => getStockStatus(row) === "low",
@@ -120,21 +114,46 @@ export function OwnerInventoryClient({
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Stock disponible</p>
             <Boxes className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-3xl font-black">{totalAvailableStock}</p>
+          <p className="mt-3 text-3xl font-black">
+            {inventorySummary.totalAvailableStock}
+          </p>
           <p className="text-muted mt-1 text-xs">unités vendables</p>
+        </article>
+        <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <p className="text-muted text-xs font-bold">Santé stock</p>
+            <ShieldCheck
+              className={cn(
+                "size-5",
+                inventorySummary.stockHealthRate >= 80
+                  ? "text-[#0b7a4b]"
+                  : inventorySummary.stockHealthRate >= 50
+                    ? "text-amber-600"
+                    : "text-red-700",
+              )}
+            />
+          </div>
+          <p className="mt-3 text-2xl font-black">
+            {inventorySummary.stockHealthRate}%
+          </p>
+          <p className="text-muted mt-1 text-xs">
+            {inventorySummary.healthyCount} ligne(s) saines
+          </p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
             <p className="text-muted text-xs font-bold">Alertes stock bas</p>
             <AlertTriangle className="size-5 text-amber-600" />
           </div>
-          <p className="mt-3 text-3xl font-black">{lowStockRows.length}</p>
+          <p className="mt-3 text-3xl font-black">
+            {inventorySummary.lowStockCount}
+          </p>
           <p className="text-muted mt-1 text-xs">lignes à surveiller</p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -142,7 +161,9 @@ export function OwnerInventoryClient({
             <p className="text-muted text-xs font-bold">Ruptures</p>
             <PackageSearch className="size-5 text-red-600" />
           </div>
-          <p className="mt-3 text-3xl font-black">{outOfStockRows.length}</p>
+          <p className="mt-3 text-3xl font-black">
+            {inventorySummary.outOfStockCount}
+          </p>
           <p className="text-muted mt-1 text-xs">produits à réapprovisionner</p>
         </article>
         <article className="rounded-3xl border border-[#e1e7e3] bg-white p-5 shadow-sm">
@@ -150,9 +171,11 @@ export function OwnerInventoryClient({
             <p className="text-muted text-xs font-bold">Valeur vente</p>
             <TrendingUp className="size-5 text-[#0b7a4b]" />
           </div>
-          <p className="mt-3 text-2xl font-black">{toMoney(saleValuation)}</p>
+          <p className="mt-3 text-2xl font-black">
+            {toMoney(inventorySummary.saleValuation)}
+          </p>
           <p className="text-muted mt-1 text-xs">
-            coût stock : {toMoney(costValuation)}
+            marge potentielle : {toMoney(inventorySummary.potentialMargin)}
           </p>
         </article>
       </div>
@@ -319,6 +342,9 @@ export function OwnerInventoryClient({
           <p className="mt-2 text-3xl font-black text-emerald-800">
             {healthyRows.length}
           </p>
+          <p className="mt-1 text-xs font-bold text-emerald-700">
+            {inventorySummary.stockHealthRate}% de santé
+          </p>
         </article>
         <article className="rounded-3xl border border-amber-100 bg-amber-50 p-5">
           <p className="text-xs font-black text-amber-800">
@@ -327,11 +353,17 @@ export function OwnerInventoryClient({
           <p className="mt-2 text-3xl font-black text-amber-800">
             {lowStockRows.length}
           </p>
+          <p className="mt-1 text-xs font-bold text-amber-700">
+            seuils atteints
+          </p>
         </article>
         <article className="rounded-3xl border border-red-100 bg-red-50 p-5">
           <p className="text-xs font-black text-red-800">Urgent</p>
           <p className="mt-2 text-3xl font-black text-red-800">
             {outOfStockRows.length}
+          </p>
+          <p className="mt-1 text-xs font-bold text-red-700">
+            action immédiate
           </p>
         </article>
       </section>
