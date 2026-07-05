@@ -1,14 +1,29 @@
 "use client";
 
 import { LoaderCircle, UserCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Logo } from "@/components/landing/logo";
+import {
+  buildEmployeeInvitationAcceptanceSummary,
+  type EmployeeInvitationAcceptanceStep,
+} from "@/lib/employee-invitation-acceptance-summary";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function AcceptEmployeeInvitationPage() {
+  const [step, setStep] =
+    useState<EmployeeInvitationAcceptanceStep>("authenticating");
   const [error, setError] = useState<string | null>(null);
+  const summary = useMemo(
+    () => buildEmployeeInvitationAcceptanceSummary({ step, error }),
+    [error, step],
+  );
 
   useEffect(() => {
+    async function fail(message: string) {
+      setError(message);
+      setStep("failed");
+    }
+
     async function acceptInvitation() {
       const params = new URLSearchParams(window.location.search);
       const invitationToken = params.get("invitation");
@@ -17,10 +32,13 @@ export default function AcceptEmployeeInvitationPage() {
         ? await supabase.auth.exchangeCodeForSession(code)
         : await supabase.auth.getSession();
       const session = authResult.data.session;
+
       if (authResult.error || !session) {
-        setError("Le lien d’authentification est invalide ou expiré.");
+        await fail("Le lien d’authentification est invalide ou expiré.");
         return;
       }
+
+      setStep("accepting");
       const acceptance = await fetch("/api/auth/accept-employee-invitation", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -32,16 +50,28 @@ export default function AcceptEmployeeInvitationPage() {
       const result = (await acceptance.json().catch(() => null)) as {
         error?: string;
       } | null;
+
       if (!acceptance.ok) {
-        setError(result?.error ?? "L’invitation n’a pas pu être acceptée.");
+        await fail(result?.error ?? "L’invitation n’a pas pu être acceptée.");
         return;
       }
+
+      setStep("syncing");
       const appSession = await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessToken: session.access_token }),
       });
-      const sessionData = (await appSession.json()) as { redirectTo: string };
+      const sessionData = (await appSession.json().catch(() => null)) as {
+        redirectTo?: string;
+      } | null;
+
+      if (!appSession.ok || !sessionData?.redirectTo) {
+        await fail("Votre session a été créée, mais la redirection a échoué.");
+        return;
+      }
+
+      setStep("redirecting");
       window.location.replace(sessionData.redirectTo);
     }
 
@@ -54,12 +84,15 @@ export default function AcceptEmployeeInvitationPage() {
         <div className="flex justify-center">
           <Logo />
         </div>
-        {error ? (
+
+        {summary.isError ? (
           <>
             <h1 className="mt-8 text-2xl font-bold text-red-700">
-              Invitation impossible
+              {summary.title}
             </h1>
-            <p className="mt-3 text-sm leading-6 text-red-600">{error}</p>
+            <p className="mt-3 text-sm leading-6 text-red-600">
+              {summary.description}
+            </p>
           </>
         ) : (
           <>
@@ -67,14 +100,17 @@ export default function AcceptEmployeeInvitationPage() {
               <UserCheck className="size-6" />
             </span>
             <LoaderCircle className="mx-auto mt-6 size-6 animate-spin text-[#0b7a4b]" />
-            <h1 className="mt-4 text-2xl font-bold">
-              Préparation de votre accès
-            </h1>
-            <p className="text-muted mt-3 text-sm">
-              Nous configurons votre rôle et votre boutique…
-            </p>
+            <h1 className="mt-4 text-2xl font-bold">{summary.title}</h1>
+            <p className="text-muted mt-3 text-sm">{summary.description}</p>
           </>
         )}
+
+        <div className="mt-7 h-2 overflow-hidden rounded-full bg-[#edf2ef]">
+          <div
+            className="h-full rounded-full bg-[#0b7a4b] transition-all duration-500"
+            style={{ width: `${summary.progress}%` }}
+          />
+        </div>
       </section>
     </main>
   );
