@@ -11,9 +11,10 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 import { Logo } from "@/components/landing/logo";
+import { buildSuperAdminBusinessCreationSummary } from "@/lib/super-admin-business-creation-summary";
 import {
   createBusinessSchema,
   type CreateBusinessInput,
@@ -37,6 +38,7 @@ export function CreateBusinessForm({
     register,
     handleSubmit,
     setError,
+    control,
     formState: { errors, isSubmitting },
   } = useForm<CreateBusinessInput>({
     resolver: zodResolver(createBusinessSchema),
@@ -51,6 +53,12 @@ export function CreateBusinessForm({
       ownerLastName: "",
       ownerEmail: "",
     },
+  });
+  const watchedValues = useWatch({ control });
+  const creationSummary = buildSuperAdminBusinessCreationSummary({
+    activities,
+    plans,
+    draft: watchedValues,
   });
 
   async function onSubmit(values: CreateBusinessInput) {
@@ -155,6 +163,59 @@ export function CreateBusinessForm({
               </p>
             </div>
           </div>
+
+          <section className="mt-7 grid gap-3 rounded-3xl border border-[#e2e8e4] bg-[#f7faf8] p-4 sm:grid-cols-4">
+            <article className="rounded-2xl bg-white p-4">
+              <p className="text-muted text-[10px] font-bold uppercase">
+                Préparation
+              </p>
+              <p className="mt-2 text-2xl font-black text-[#0b7a4b]">
+                {creationSummary.readinessScore}%
+              </p>
+              <p className="text-muted mt-1 text-[10px]">
+                {creationSummary.canPrepareCreation
+                  ? "Prêt à créer"
+                  : "À compléter"}
+              </p>
+            </article>
+            <article className="rounded-2xl bg-white p-4">
+              <p className="text-muted text-[10px] font-bold uppercase">
+                Catalogue
+              </p>
+              <p className="mt-2 text-sm font-black">
+                {creationSummary.activityCount} activité(s)
+              </p>
+              <p className="text-muted mt-1 text-[10px]">
+                {creationSummary.planCount} offre(s) active(s)
+              </p>
+            </article>
+            <article className="rounded-2xl bg-white p-4">
+              <p className="text-muted text-[10px] font-bold uppercase">
+                Activité
+              </p>
+              <p className="mt-2 line-clamp-1 text-sm font-black">
+                {creationSummary.selectedActivityLabel}
+              </p>
+              <p className="text-muted mt-1 line-clamp-1 text-[10px]">
+                {creationSummary.selectedPlanLabel}
+              </p>
+            </article>
+            <article className="rounded-2xl bg-white p-4">
+              <p className="text-muted text-[10px] font-bold uppercase">
+                Identités
+              </p>
+              <p className="mt-2 text-sm font-black">
+                {creationSummary.hasBusinessIdentity
+                  ? "Entreprise OK"
+                  : "Entreprise à compléter"}
+              </p>
+              <p className="text-muted mt-1 text-[10px]">
+                {creationSummary.hasOwnerIdentity
+                  ? "Propriétaire OK"
+                  : "Propriétaire à compléter"}
+              </p>
+            </article>
+          </section>
 
           <form onSubmit={handleSubmit(onSubmit)} className="mt-9 space-y-8">
             <fieldset>
